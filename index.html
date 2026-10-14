@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Culinária Criativa — Jogo para até 10 Jogadores</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="bg-emoji" aria-hidden="true">🍕 🍰 🍔 🍣 🍩 🥑 🍝 🧁 🍓 🌮</div>
+
+<header class="topbar">
+  <div class="logo">👩‍🍳 Culinária Criativa</div>
+  <div class="badge">até 10 jogadores • local + online</div>
+</header>
+
+<main class="container">
+
+  <!-- TELA 1: INÍCIO -->
+  <section id="screen-home" class="screen active">
+    <div class="card hero">
+      <h1>🍳 Culinária Criativa</h1>
+      <p class="subtitle">Cozinhem com o <b>tema sorteado</b>, corram contra o <b>tempo sorteado</b>, avaliem com <b>até 5 estrelas</b> e descubram o pódio!</p>
+      <div class="how">
+        <div><span>1️⃣</span> Escolha seu personagem</div>
+        <div><span>2️⃣</span> Sorteie tema + tempo</div>
+        <div><span>3️⃣</span> Monte seu prato</div>
+        <div><span>4️⃣</span> Avalie e veja o pódio 🥇🥈🥉</div>
+      </div>
+      <button class="btn primary big" onclick="goToSetup()">👨‍👩‍👧 Jogar no mesmo aparelho</button>
+      <button class="btn secondary big" onclick="goOnline()">🌐 Jogar Online com amigos</button>
+      <p class="muted">Online: um cria a sala e passa o código (4 letras). Até 10 chefs!</p>
+    </div>
+  </section>
+
+  <!-- TELA ONLINE: CRIAR / ENTRAR -->
+  <section id="screen-online" class="screen">
+    <div class="card">
+      <h2>🌐 Jogar Online</h2>
+      <div class="draw-grid">
+        <div class="draw-box">
+          <h3>🏠 Criar sala</h3>
+          <label class="field">Seu nome:<input id="hostName" maxlength="14" placeholder="Ex: Ana"></label>
+          <p class="field-label">Seu personagem:</p>
+          <div id="hostAvatars" class="avatar-row"></div>
+          <button class="btn primary" onclick="createRoom()">Criar sala</button>
+        </div>
+        <div class="draw-box">
+          <h3>🚪 Entrar numa sala</h3>
+          <label class="field">Seu nome:<input id="guestName" maxlength="14" placeholder="Ex: Bruno"></label>
+          <p class="field-label">Seu personagem:</p>
+          <div id="guestAvatars" class="avatar-row"></div>
+          <label class="field">Código da sala:<input id="roomCodeInput" maxlength="4" placeholder="ABCD" style="text-transform:uppercase"></label>
+          <button class="btn secondary" onclick="joinRoom()">Entrar</button>
+        </div>
+      </div>
+      <p id="onlineStatus" class="muted center"></p>
+      <div class="row"><button class="btn ghost" onclick="showScreen('screen-home')">← Voltar</button></div>
+    </div>
+  </section>
+
+  <!-- TELA LOBBY ONLINE -->
+  <section id="screen-lobby" class="screen">
+    <div class="card center">
+      <h2>🏠 Sala <span id="lobbyCode" class="room-code">----</span></h2>
+      <p class="muted">Passe esse código para os amigos entrarem. Mínimo 2, máximo 10 chefs.</p>
+      <div id="lobbyPlayers" class="lobby-list"></div>
+      <div id="lobbyDraw" class="draw-grid" style="display:none">
+        <div class="draw-box"><h3>📋 Tema</h3><div id="themeSlotOnline" class="slot">❓</div><div id="themeDescOnline" class="desc"></div></div>
+        <div class="draw-box"><h3>⏱️ Tempo</h3><div id="timeSlotOnline" class="slot">❓</div><div id="timeDescOnline" class="desc"></div></div>
+      </div>
+      <div class="row center-row">
+        <button id="btnDrawOnline" class="btn secondary" onclick="hostDrawAll()" style="display:none">🎲 Sortear Tema + Tempo</button>
+        <button id="btnStartOnline" class="btn primary big" onclick="hostStartGame()" style="display:none" disabled>🔒 Aguardando sorteio</button>
+      </div>
+      <p id="lobbyWait" class="muted">Aguardando o anfitrião sortear e começar... ☕</p>
+    </div>
+  </section>
+
+  <!-- TELA 2: SETUP JOGADORES -->
+  <section id="screen-setup" class="screen">
+    <div class="card">
+      <h2>👥 Quem vai jogar? (2 a 10)</h2>
+      <label>Número de jogadores:
+        <select id="numPlayers" onchange="renderPlayerForms()">
+          <option value="2">2</option><option value="3" selected>3</option>
+          <option value="4">4</option><option value="5">5</option>
+          <option value="6">6</option><option value="7">7</option>
+          <option value="8">8</option><option value="9">9</option>
+          <option value="10">10</option>
+        </select>
+      </label>
+      <div id="playerForms" class="player-forms"></div>
+      <div class="row">
+        <button class="btn ghost" onclick="showScreen('screen-home')">← Voltar</button>
+        <button class="btn primary" onclick="confirmPlayers()">Sortear Tema e Tempo →</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- TELA 3: SORTEIO -->
+  <section id="screen-draw" class="screen">
+    <div class="card center">
+      <h2>🎲 Sorteio da Rodada</h2>
+      <div class="draw-grid">
+        <div class="draw-box">
+          <h3>📋 Tema</h3>
+          <div id="themeSlot" class="slot">❓</div>
+          <div id="themeDesc" class="desc"></div>
+          <button class="btn secondary" onclick="drawTheme()">Sortear Tema</button>
+        </div>
+        <div class="draw-box">
+          <h3>⏱️ Tempo</h3>
+          <div id="timeSlot" class="slot">❓</div>
+          <div id="timeDesc" class="desc"></div>
+          <button class="btn secondary" onclick="drawTime()">Sortear Tempo</button>
+        </div>
+      </div>
+      <div class="row center-row">
+        <button class="btn ghost" onclick="showScreen('screen-setup')">← Editar jogadores</button>
+        <button id="btnStartCooking" class="btn primary big" onclick="startCooking()" disabled>🔒 Sorteie tema e tempo</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- TELA 4: COZINHAR -->
+  <section id="screen-cook" class="screen">
+    <div class="cook-header">
+      <div class="pill">📋 Tema: <b id="cookTheme"></b></div>
+      <div id="timer" class="timer">⏱️ --:--</div>
+      <div class="pill">🍽️ Chef <b id="cookTurn"></b></div>
+    </div>
+    <div class="progress"><div id="progressBar"></div></div>
+
+    <div class="card">
+      <div class="chef-line"><span id="cookAvatar" class="big-avatar"></span>
+        <div><h2 id="cookName"></h2><p class="muted">Monte seu prato! Escolha até 6 ingredientes e dê um nome incrível.</p></div>
+      </div>
+      <label class="field">Nome do prato:
+        <input id="dishName" maxlength="40" placeholder="Ex: Pizza Arco-Íris Vulcânica">
+      </label>
+      <p class="field-label">Ingredientes (clique até 6): <span id="ingCount">0/6</span></p>
+      <div id="ingredientGrid" class="ing-grid"></div>
+      <div class="row">
+        <button class="btn ghost" id="btnSkip" onclick="finishDish(true)">Pular / Prato rápido</button>
+        <button class="btn primary" onclick="finishDish(false)">✅ Finalizar Prato</button>
+      </div>
+      <div id="queue" class="queue"></div>
+    </div>
+  </section>
+
+  <!-- TELA 5: AVALIAÇÃO -->
+  <section id="screen-vote" class="screen">
+    <div class="card center">
+      <h2>⭐ Hora de Avaliar! ⭐</h2>
+      <p>O tempo acabou! Agora cada prato será avaliado pelos outros chefs com <b>até 5 estrelas</b>.</p>
+      <div id="voteCard" class="vote-card"></div>
+      <div id="voterLine" class="voter-line"></div>
+      <div id="starsRow" class="stars"></div>
+      <div class="row center-row">
+        <button class="btn primary" id="btnNextVote" onclick="nextVote()">Confirmar voto →</button>
+      </div>
+      <div id="voteProgress" class="muted"></div>
+    </div>
+  </section>
+
+  <!-- TELA 6: PÓDIO -->
+  <section id="screen-podium" class="screen">
+    <div class="card center">
+      <h2>🏆 Resultado Final 🏆</h2>
+      <p id="podiumTheme" class="muted"></p>
+      <div id="podium" class="podium"></div>
+      <div id="fullRank" class="rank-list"></div>
+      <div class="row center-row">
+        <button class="btn ghost" onclick="location.reload()">🔄 Novo jogo</button>
+        <button class="btn primary" onclick="rematch()">🍳 Revanche (mesmos jogadores)</button>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>Feito com ❤️ para jogar em família e amigos — Culinária Criativa</footer>
+<canvas id="confetti"></canvas>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="script.js"></script>
+<script src="online.js"></script>
+</body>
+</html>
