@@ -48,7 +48,10 @@ Regras:
 
 ## Armadilhas conhecidas
 
-- Os botões da tela de cozinhar são trocados pelo modo online. O HTML original é guardado em `_localCookRowHTML` no carregamento e restaurado por `startCooking()`; não remova essa proteção.
+- Os botões da tela de cozinhar ficam em `#cookActions` e são trocados pelo modo online. O HTML original é guardado em `_localCookRowHTML` no carregamento e restaurado por `startCooking()`; não remova essa proteção.
+- A cozinha em primeira pessoa é uma cena panorâmica em `#kitchen` (`.kitchen-scene`, 220% da largura). Arrastar/teclas ← → mudam `panPct`, limitado por `PAN_MIN`. Não troque a cena por um grid fixo: os ingredientes vêm de `KITCHEN_SOURCES` e são compartilhados pelos dois modos.
+- `selectedIngs` e `kitchenPrep` são globais de `script.js` usados também por `online.js`. Toda alteração de ingrediente deve passar por `toggleIng()` + `syncIngredientUI()` para manter geladeira, armário, tigela e lista sincronizados.
+- O preparo (`panela`, `liquidificador`, `prato`) é validado por `safePrep()` e vai junto no prato local/online; não confie em dados do convidado sem sanitizar.
 - O pódio usa `#podiumActions` e `renderPodiumActions()` para escolher as ações conforme o modo. Não volte a fixar botões no HTML: "Revanche" local não funciona em partida online.
 - No modo local cada chef tem o tempo sorteado, controlado por `startLocalTurn()`. No online o tempo é único para todos, controlado pelo host.
 - `online.js` depende dos globais de `script.js` (`toast`, `AVATARS`, `updateTimerUI`, `renderPodiumActions`, `fireConfetti`) e é carregado depois dele.

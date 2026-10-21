@@ -15,13 +15,38 @@ const THEMES = [
   {n:"🍔 Hambúrguer Gourmet", d:"Alto, suculento e criativo."},
 ];
 const TIMES = [30,45,60,90,120];
-const INGREDIENTS = ["🍅","🧀","🍖","🍗","🥓","🐟","🍤","🥚","🍚","🍝","🥔","🥕","🥦","🌽","🍄","🧄","🧅","🫘","🥑","🍋","🍓","🍌","🍫","🍯","🥛","🌶️","🫒","🧂","🍕","🥬"];
+
+// Ingredientes "físicos" espalhados pela cozinha
+const KITCHEN_SOURCES = [
+  {id:'geladeira', label:'Geladeira', icon:'🧊', items:['🍅','🧀','🥛','🥚','🍓','🥬','🥕','🍋']},
+  {id:'armario',   label:'Armário',   icon:'🚪', items:['🍝','🍚','🥔','🍄','🧄','🧅','🫘','🥑']},
+  {id:'temperos',  label:'Temperos',  icon:'🧂', items:['🌶️','🫒','🧂','🍯','🍫']},
+  {id:'cesto',     label:'Cesto',     icon:'🧺', items:['🍖','🍗','🥓','🐟','🍤','🌽','🥦','🍌','🍕']},
+];
+const INGREDIENTS = KITCHEN_SOURCES.flatMap(s=>s.items);
+const ING_NAMES = {
+  '🍅':'Tomate','🧀':'Queijo','🍖':'Carne','🍗':'Frango','🥓':'Bacon','🐟':'Peixe','🍤':'Camarão',
+  '🥚':'Ovo','🍚':'Arroz','🍝':'Macarrão','🥔':'Batata','🥕':'Cenoura','🥦':'Brócolis','🌽':'Milho',
+  '🍄':'Cogumelo','🧄':'Alho','🧅':'Cebola','🫘':'Feijão','🥑':'Abacate','🍋':'Limão','🍓':'Morango',
+  '🍌':'Banana','🍫':'Chocolate','🍯':'Mel','🥛':'Leite','🌶️':'Pimenta','🫒':'Azeitona','🧂':'Sal',
+  '🍕':'Pizza','🥬':'Alface'
+};
+const PREP_LABEL = {
+  panela:'🔥 Salteado na panela',
+  liquidificador:'🥤 Batido no liquidificador',
+  prato:'🍽️ Montado no prato'
+};
+function safePrep(p){ return p && PREP_LABEL[p] ? p : null; }
 
 let players = []; // {name, avatar}
 let theme = null, totalTime = 0, timeLeft = 0, timerId = null, turnEndAt = 0;
 let cookIndex = 0, dishes = [], selectedIngs = new Set();
 let votes = [], voteDishIdx = 0, voterQueue = [], currentVote = 0;
 let _localCookRowHTML = null;
+let kitchenPrep = null, kitchenLocked = false, panPct = -13.5, panDrag = null;
+let _hintTimer = null;
+const PAN_MIN = -54.55; // limite do panorama (cenário com 220% da largura)
+const KITCHEN_HINT = 'Arraste para olhar em volta • clique na geladeira, no armário e nos utensílios';
 
 // ---- Utilidades ----
 function showScreen(id){
@@ -40,6 +65,213 @@ function toast(msg){
 function randomIngredient(){ return INGREDIENTS[Math.floor(Math.random()*INGREDIENTS.length)]; }
 function leaveGame(){ location.reload(); }
 function goToSetup(){ showScreen('screen-setup'); renderPlayerForms(); }
+
+// ---- Cozinha em primeira pessoa ----
+function buildKitchenItems(){
+  const map = {geladeira:'fridgeItems', armario:'cabinetItems', temperos:'temperosItems', cesto:'cestoItems'};
+  KITCHEN_SOURCES.forEach(src=>{
+    const box = document.getElementById(map[src.id]);
+    if(!box) return;
+    box.innerHTML = '';
+    src.items.forEach(ing=>{
+      const b = document.createElement('button');
+      b.type='button'; b.className='k-item'; b.dataset.ing=ing;
+      b.textContent = ing;
+      b.title = ING_NAMES[ing] || ing;
+      b.setAttribute('aria-label', `Pegar ${ING_NAMES[ing] || ing}`);
+      b.setAttribute('aria-pressed','false');
+      b.onclick = (e)=>{ e.stopPropagation(); takeIngredient(ing, b); };
+      box.appendChild(b);
+    });
+  });
+}
+function takeIngredient(ing, btn){
+  const res = toggleIng(ing);
+  if(res==='full'){ toast('Máximo 6 ingredientes!'); return; }
+  if(res==='added') flyIngredient(btn, ing);
+  if(res!=='locked') syncIngredientUI();
+}
+function toggleIng(ing){
+  if(kitchenLocked) return 'locked';
+  if(selectedIngs.has(ing)){ selectedIngs.delete(ing); return 'removed'; }
+  if(selectedIngs.size>=6) return 'full';
+  selectedIngs.add(ing);
+  return 'added';
+}
+function renderSimpleIngredientGrid(){
+  const g = document.getElementById('ingredientGrid'); if(!g) return;
+  g.innerHTML = '';
+  INGREDIENTS.forEach(ing=>{
+    const b = document.createElement('button'); b.type='button';
+    b.className = 'ing' + (selectedIngs.has(ing) ? ' sel' : '');
+    b.dataset.ing = ing;
+    b.setAttribute('aria-pressed', selectedIngs.has(ing) ? 'true' : 'false');
+    b.innerHTML = `<span class="e">${ing}</span>${ING_NAMES[ing] || 'escolher'}`;
+    b.onclick = ()=>{
+      const res = toggleIng(ing);
+      if(res==='full'){ toast('Máximo 6 ingredientes!'); return; }
+      if(res!=='locked') syncIngredientUI();
+    };
+    g.appendChild(b);
+  });
+}
+function renderTray(){
+  const tray = document.getElementById('tray'); if(!tray) return;
+  const chosen = [...selectedIngs];
+  tray.innerHTML = '';
+  for(let i=0;i<6;i++){
+    const ing = chosen[i];
+    const b = document.createElement('button');
+    b.type='button';
+    b.className = 'k-slot' + (ing ? ' has' : '');
+    if(ing){
+      b.textContent = ing;
+      b.title = `Remover ${ING_NAMES[ing] || ing}`;
+      b.setAttribute('aria-label', b.title);
+      b.onclick = ()=>{ if(toggleIng(ing)!=='locked') syncIngredientUI(); };
+    } else {
+      b.setAttribute('aria-hidden','true');
+      b.tabIndex = -1;
+    }
+    tray.appendChild(b);
+  }
+}
+function updateKitchenStations(){
+  [['panela','pan','panItems'],['liquidificador','blender','blenderItems'],['prato','plates',null]].forEach(([key,id,itemsId])=>{
+    const el = document.getElementById(id); if(!el) return;
+    const active = kitchenPrep===key;
+    el.classList.toggle('active', active);
+    el.setAttribute('aria-pressed', active ? 'true' : 'false');
+    if(itemsId){
+      const box = document.getElementById(itemsId);
+      if(box) box.innerHTML = active ? [...selectedIngs].slice(0,4).map(i=>`<span>${i}</span>`).join('') : '';
+    }
+  });
+  const badge = document.getElementById('prepBadge');
+  if(badge){
+    if(kitchenPrep){ badge.hidden = false; badge.textContent = PREP_LABEL[kitchenPrep]; }
+    else { badge.hidden = true; badge.textContent = ''; }
+  }
+}
+function syncIngredientUI(){
+  document.querySelectorAll('.k-item[data-ing]').forEach(b=>{
+    const on = selectedIngs.has(b.dataset.ing);
+    b.classList.toggle('taken', on);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    b.setAttribute('aria-disabled', on ? 'true' : 'false');
+  });
+  document.querySelectorAll('#ingredientGrid .ing[data-ing]').forEach(b=>{
+    const on = selectedIngs.has(b.dataset.ing);
+    b.classList.toggle('sel', on);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+  const count = document.getElementById('ingCount'); if(count) count.textContent = `${selectedIngs.size}/6`;
+  const tc = document.getElementById('trayCount'); if(tc) tc.textContent = `${selectedIngs.size}/6`;
+  renderTray();
+  updateKitchenStations();
+}
+function toggleKitchenDoor(which){
+  const el = document.getElementById(which==='fridge' ? 'fridge' : 'cabinet'); if(!el) return;
+  const open = el.dataset.open !== 'true';
+  el.dataset.open = open ? 'true' : 'false';
+  const door = el.querySelector('.k-door');
+  if(door) door.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+function showKitchenHint(text, autoHide){
+  const el = document.getElementById('kitchenHint');
+  if(!el) return;
+  el.textContent = text;
+  el.classList.remove('hide');
+  clearTimeout(_hintTimer);
+  if(autoHide) _hintTimer = setTimeout(()=>{ el.classList.add('hide'); }, 7000);
+}
+function setPrep(p){
+  if(kitchenLocked) return;
+  if(!selectedIngs.size){ toast('Escolha ingredientes primeiro!'); return; }
+  kitchenPrep = kitchenPrep===p ? null : p;
+  updateKitchenStations();
+  showKitchenHint(kitchenPrep ? 'Boa! Agora dê um nome ao prato e finalize.' : KITCHEN_HINT, !kitchenPrep);
+  if(kitchenPrep) toast(PREP_LABEL[kitchenPrep]);
+}
+function setKitchenLocked(locked){
+  kitchenLocked = !!locked;
+  const k = document.getElementById('kitchen');
+  if(k) k.classList.toggle('locked', kitchenLocked);
+  document.querySelectorAll('#ingredientGrid .ing').forEach(b=>{ b.disabled = kitchenLocked; });
+}
+function resetKitchenView(){
+  kitchenPrep = null; kitchenLocked = false;
+  const k = document.getElementById('kitchen');
+  if(k) k.classList.remove('locked','dragging');
+  document.querySelectorAll('.k-furniture[data-open]').forEach(f=>{ f.dataset.open = 'false'; });
+  document.querySelectorAll('.k-door').forEach(d=>{ d.setAttribute('aria-expanded','false'); });
+  document.querySelectorAll('#ingredientGrid .ing').forEach(b=>{ b.disabled = false; });
+  showKitchenHint(KITCHEN_HINT, true);
+  updateKitchenStations();
+}
+function toggleIngredientList(){
+  const grid = document.getElementById('ingredientGrid');
+  const label = document.getElementById('listLabel');
+  const btn = document.getElementById('btnListMode');
+  if(!grid) return;
+  const show = grid.hasAttribute('hidden');
+  if(show){
+    grid.removeAttribute('hidden');
+    if(label) label.removeAttribute('hidden');
+    if(btn){ btn.setAttribute('aria-expanded','true'); btn.textContent = '🧾 Esconder lista'; }
+  } else {
+    grid.setAttribute('hidden','');
+    if(label) label.setAttribute('hidden','');
+    if(btn){ btn.setAttribute('aria-expanded','false'); btn.textContent = '🧾 Ver todos os ingredientes'; }
+  }
+}
+function flyIngredient(fromEl, ing){
+  if(!fromEl || !fromEl.getBoundingClientRect) return;
+  const tray = document.getElementById('tray'); if(!tray) return;
+  const a = fromEl.getBoundingClientRect(), t = tray.getBoundingClientRect();
+  if(!a.width || !t.width) return;
+  const g = document.createElement('span');
+  g.className = 'k-fly'; g.textContent = ing;
+  g.style.left = (a.left + a.width/2 - 16) + 'px';
+  g.style.top = (a.top + a.height/2 - 16) + 'px';
+  document.body.appendChild(g);
+  requestAnimationFrame(()=>{
+    g.style.transform = `translate(${(t.left+t.width/2)-(a.left+a.width/2)}px, ${(t.top+t.height/2)-(a.top+a.height/2)}px) scale(.6)`;
+    g.style.opacity = '0';
+  });
+  setTimeout(()=>g.remove(), 500);
+}
+function applyPan(){
+  const scene = document.getElementById('kitchenScene');
+  if(scene) scene.style.transform = `translateX(${panPct}%)`;
+}
+function initKitchen(){
+  buildKitchenItems();
+  renderTray();
+  const k = document.getElementById('kitchen'), scene = document.getElementById('kitchenScene');
+  if(!k || !scene) return;
+  applyPan();
+  k.addEventListener('pointerdown', e=>{
+    if((e.target.closest && (e.target.closest('button') || e.target.closest('.k-traybar')))) return;
+    panDrag = {x:e.clientX, pan:panPct, w:scene.getBoundingClientRect().width || 1};
+    if(k.setPointerCapture){ try{ k.setPointerCapture(e.pointerId); }catch(_){} }
+    k.classList.add('dragging');
+  });
+  k.addEventListener('pointermove', e=>{
+    if(!panDrag) return;
+    const delta = (e.clientX - panDrag.x) / panDrag.w * 100;
+    panPct = Math.max(PAN_MIN, Math.min(0, panDrag.pan + delta));
+    applyPan();
+  });
+  const stop = ()=>{ panDrag = null; k.classList.remove('dragging'); };
+  ['pointerup','pointercancel','pointerleave'].forEach(ev=>k.addEventListener(ev, stop));
+  k.addEventListener('keydown', e=>{
+    if(e.key==='ArrowLeft' || e.key==='ArrowRight'){
+      panPct = Math.max(PAN_MIN, Math.min(0, panPct + (e.key==='ArrowLeft' ? 6 : -6)));
+      applyPan(); e.preventDefault();
+    }
+  });
+}
 
 // ---- Setup ----
 function renderPlayerForms(){
@@ -119,12 +351,12 @@ function updateStartBtn(){
 function startCooking(){
   MODE = 'local';
   // restaura os botões do modo local (o online troca esse trecho da tela)
-  const row = document.querySelector('#screen-cook .row');
+  const row = document.getElementById('cookActions');
   if(!_localCookRowHTML) _localCookRowHTML = row.innerHTML;
   row.innerHTML = _localCookRowHTML;
   document.getElementById('dishName').disabled = false;
   cookIndex=0;
-  dishes=players.map(p=>({...p,dish:"",ings:[]}));
+  dishes=players.map(p=>({...p,dish:"",ings:[],prep:null}));
   votes=[]; voteDishIdx=0; voterQueue=[]; currentVote=0;
   showScreen('screen-cook');
   document.getElementById('cookTheme').textContent = theme.n;
@@ -143,22 +375,9 @@ function renderCookTurn(){
   document.getElementById('dishName').value = d.dish||"";
   document.getElementById('dishName').disabled = false;
   selectedIngs = new Set(d.ings);
-  const g=document.getElementById('ingredientGrid'); g.innerHTML="";
-  INGREDIENTS.forEach(ing=>{
-    const b=document.createElement('button'); b.type='button';
-    b.className='ing'+(selectedIngs.has(ing)?' sel':'');
-    b.setAttribute('aria-pressed', selectedIngs.has(ing)?'true':'false');
-    b.innerHTML=`<span class="e">${ing}</span>escolher`;
-    b.onclick=()=>{
-      if(selectedIngs.has(ing)) selectedIngs.delete(ing);
-      else { if(selectedIngs.size>=6){ toast('Máximo 6 ingredientes!'); return; } selectedIngs.add(ing); }
-      b.classList.toggle('sel');
-      b.setAttribute('aria-pressed', selectedIngs.has(ing)?'true':'false');
-      document.getElementById('ingCount').textContent=`${selectedIngs.size}/6`;
-    };
-    g.appendChild(b);
-  });
-  document.getElementById('ingCount').textContent=`${selectedIngs.size}/6`;
+  resetKitchenView();
+  renderSimpleIngredientGrid();
+  syncIngredientUI();
   const q=document.getElementById('queue'); q.innerHTML="";
   dishes.forEach((x,i)=>{
     const c=document.createElement('span'); c.className='qchip'+(i<cookIndex?' done':'');
@@ -176,6 +395,7 @@ function finishDish(skip){
   const d = dishes[cookIndex];
   d.dish = typed || dishFallback(d);
   d.ings = [...selectedIngs].length ? [...selectedIngs] : [randomIngredient()];
+  d.prep = kitchenPrep;
   advanceLocalCook();
 }
 function timeUpLocal(){
@@ -183,6 +403,7 @@ function timeUpLocal(){
   const typed = (document.getElementById('dishName').value||'').trim();
   d.dish = typed || `Prato Relâmpago de ${d.name}`;
   d.ings = [...selectedIngs].length ? [...selectedIngs] : [randomIngredient()];
+  d.prep = kitchenPrep;
   toast(`⏰ O tempo de ${d.name} acabou!`);
   advanceLocalCook();
 }
@@ -235,11 +456,12 @@ function nextVoter(){
   }
   const voterIdx = voterQueue[0];
   const dish = dishes[voteDishIdx];
+  const prep = dish.prep ? `<div class="prep-badge">${PREP_LABEL[dish.prep]}</div>` : '';
   currentVote = 0;
   document.getElementById('voteCard').innerHTML =
     `<div class="dish">${dish.avatar} “${dish.dish}”</div>
      <div>por <b>${dish.name}</b> • Tema ${theme.n}</div>
-     <div class="ings">${dish.ings.join(' ')}</div>`;
+     <div class="ings">${dish.ings.join(' ')}</div>${prep}`;
   document.getElementById('voterLine').textContent = `🗳️ ${dishes[voterIdx].avatar} ${dishes[voterIdx].name}, sua nota:`;
   document.getElementById('voteProgress').textContent = `Prato ${voteDishIdx+1}/${dishes.length} • voto ${votes[voteDishIdx].length+1}/${dishes.length-1}`;
   renderStars();
@@ -342,5 +564,6 @@ function fireConfetti(){
 
 // ---- Inicialização ----
 renderPlayerForms();
-_localCookRowHTML = document.querySelector('#screen-cook .row').innerHTML;
+initKitchen();
+_localCookRowHTML = document.getElementById('cookActions').innerHTML;
 document.addEventListener('keydown', handleVoteKeys);

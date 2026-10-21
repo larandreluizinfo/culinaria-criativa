@@ -131,7 +131,7 @@
     </div>
   </section>
 
-  <!-- TELA 4: COZINHAR -->
+  <!-- TELA 4: COZINHAR (cozinha em primeira pessoa) -->
   <section id="screen-cook" class="screen">
     <div class="cook-header">
       <div class="pill">📋 Tema: <b id="cookTheme"></b></div>
@@ -140,20 +140,101 @@
     </div>
     <div class="progress"><div id="progressBar"></div></div>
 
-    <div class="card">
-      <div class="chef-line"><span id="cookAvatar" class="big-avatar"></span>
-        <div><h2 id="cookName"></h2><p class="muted">Monte seu prato! Escolha até 6 ingredientes e dê um nome incrível.</p></div>
+    <div class="kitchen-layout">
+      <div class="kitchen" id="kitchen" tabindex="0" aria-label="Cozinha em primeira pessoa. Arraste para olhar em volta e clique nos móveis e utensílios.">
+        <div class="kitchen-scene" id="kitchenScene">
+          <div class="k-wall"></div>
+          <div class="k-tile"></div>
+          <div class="k-floor"></div>
+
+          <div class="k-window" aria-hidden="true">
+            <div class="k-sky">☀️</div>
+            <div class="k-curtain l"></div>
+            <div class="k-curtain r"></div>
+          </div>
+
+          <div class="k-fridge k-furniture" id="fridge" data-open="false">
+            <div class="k-fridge-body">
+              <div class="k-fridge-items" id="fridgeItems"></div>
+            </div>
+            <button class="k-door" type="button" onclick="toggleKitchenDoor('fridge')" aria-expanded="false" aria-controls="fridgeItems" aria-label="Abrir geladeira">
+              <span class="k-door-tag">🧊 Geladeira</span>
+              <span class="k-handle"></span>
+            </button>
+          </div>
+
+          <div class="k-cabinet k-furniture" id="cabinet" data-open="false">
+            <div class="k-cabinet-body">
+              <div class="k-cabinet-items" id="cabinetItems"></div>
+            </div>
+            <button class="k-door" type="button" onclick="toggleKitchenDoor('cabinet')" aria-expanded="false" aria-controls="cabinetItems" aria-label="Abrir armário">
+              <span class="k-door-tag">🚪 Armário</span>
+              <span class="k-handle"></span>
+            </button>
+          </div>
+
+          <div class="k-clock" aria-hidden="true">🕐</div>
+
+          <div class="k-shelf k-furniture">
+            <span class="k-shelf-label">🧂 Temperos</span>
+            <div class="k-shelf-items" id="temperosItems"></div>
+          </div>
+
+          <div class="k-counter"></div>
+
+          <div class="k-basket k-furniture">
+            <span class="k-basket-label">🧺 Cesto</span>
+            <div class="k-basket-items" id="cestoItems"></div>
+          </div>
+
+          <button class="k-station k-pan" id="pan" type="button" onclick="setPrep('panela')" aria-pressed="false" aria-label="Cozinhar na panela">
+            <span class="k-pan-body">🍳</span>
+            <span class="k-pan-items" id="panItems"></span>
+            <span class="k-steam" aria-hidden="true">~ ~ ~</span>
+            <span class="k-station-tag">Panela</span>
+          </button>
+
+          <button class="k-station k-blender" id="blender" type="button" onclick="setPrep('liquidificador')" aria-pressed="false" aria-label="Bater no liquidificador">
+            <span class="k-blender-body">🥤</span>
+            <span class="k-blender-items" id="blenderItems"></span>
+            <span class="k-station-tag"><span class="tag-long">Liquidificador</span><span class="tag-short">Bater</span></span>
+          </button>
+
+          <button class="k-station k-plates" id="plates" type="button" onclick="setPrep('prato')" aria-pressed="false" aria-label="Montar no prato">
+            <span class="k-plates-body">🍽️</span>
+            <span class="k-station-tag">Pratos</span>
+          </button>
+
+          <div class="k-sink" aria-hidden="true">🚰</div>
+          <div class="k-plant" aria-hidden="true">🪴</div>
+        </div>
+
+        <div class="k-crosshair" aria-hidden="true"></div>
+        <p class="k-hint" id="kitchenHint">Arraste para olhar em volta • clique na geladeira, no armário e nos utensílios</p>
+
+        <div class="k-traybar">
+          <div class="k-tray-head"><span>🥣 Sua tigela</span><span id="trayCount">0/6</span></div>
+          <div class="k-tray" id="tray" aria-label="Ingredientes escolhidos"></div>
+          <div id="prepBadge" class="k-prep" hidden></div>
+        </div>
       </div>
-      <label class="field">Nome do prato:
-        <input id="dishName" maxlength="40" placeholder="Ex: Pizza Arco-Íris Vulcânica">
-      </label>
-      <p class="field-label">Ingredientes (clique até 6): <span id="ingCount">0/6</span></p>
-      <div id="ingredientGrid" class="ing-grid"></div>
-      <div class="row">
-        <button class="btn ghost" id="btnSkip" onclick="finishDish(true)">Pular / Prato rápido</button>
-        <button class="btn primary" onclick="finishDish(false)">✅ Finalizar Prato</button>
+
+      <div class="kitchen-side">
+        <div class="chef-line"><span id="cookAvatar" class="big-avatar"></span>
+          <div><h2 id="cookName"></h2><p class="muted">Pegue até 6 ingredientes na cozinha e capriche no prato!</p></div>
+        </div>
+        <label class="field">Nome do prato:
+          <input id="dishName" maxlength="40" placeholder="Ex: Pizza Arco-Íris Vulcânica">
+        </label>
+        <button class="btn ghost small" id="btnListMode" type="button" onclick="toggleIngredientList()" aria-expanded="false">🧾 Ver todos os ingredientes</button>
+        <p class="field-label" id="listLabel" hidden>Ingredientes (clique até 6): <span id="ingCount">0/6</span></p>
+        <div id="ingredientGrid" class="ing-grid" hidden></div>
+        <div class="row" id="cookActions">
+          <button class="btn ghost" id="btnSkip" onclick="finishDish(true)">Pular / Prato rápido</button>
+          <button class="btn primary" onclick="finishDish(false)">✅ Finalizar Prato</button>
+        </div>
+        <div id="queue" class="queue"></div>
       </div>
-      <div id="queue" class="queue"></div>
     </div>
   </section>
 

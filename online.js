@@ -11,7 +11,7 @@ let roomCode = '';
 let onlinePlayers = []; // {id,name,avatar,connPeer?}
 let onlineDishes = [];  // {id,name,avatar,dish,ings}
 let onlineVotes = {};   // voterId -> {ownerId: stars}
-let myDish = { dish: '', ings: [] };
+let myDish = { dish: '', ings: [], prep: null };
 let myOnlineStars = {}; // ownerId -> stars (meu voto)
 let hostSelAvatar = '👨‍🍳', guestSelAvatar = '👩‍🍳';
 let gamePhase = 'lobby'; // lobby | cook | vote | podium
@@ -90,7 +90,7 @@ function openHostPeer(){
   peer.on('open', ()=>{
     connecting = false; hostTry = 3;
     onlinePlayers = [{id:myId, name:myName, avatar:myAvatar}];
-    onlineDishes = []; onlineVotes = {}; myOnlineStars = {}; myDish = {dish:'',ings:[]};
+    onlineDishes = []; onlineVotes = {}; myOnlineStars = {}; myDish = {dish:'',ings:[],prep:null};
     theme = null; totalTime = 0; gamePhase = 'lobby';
     showScreen('screen-lobby');
     renderLobby();
@@ -174,7 +174,8 @@ function hostOnData(conn, d){
     const rec = {
       id:d.id, name:pl.name, avatar:pl.avatar,
       dish:String(d.dish||'Prato misterioso').slice(0,40),
-      ings: Array.isArray(d.ings) ? d.ings.slice(0,6) : []
+      ings: Array.isArray(d.ings) ? d.ings.slice(0,6) : [],
+      prep: safePrep(d.prep)
     };
     const i = onlineDishes.findIndex(x=>x.id===d.id);
     if(i>=0) onlineDishes[i]=rec; else onlineDishes.push(rec);
@@ -224,7 +225,7 @@ function hostDrawAll(){
   theme = THEMES[Math.floor(Math.random()*THEMES.length)];
   totalTime = TIMES[Math.floor(Math.random()*TIMES.length)];
   onlineDishes = []; onlineVotes = {};
-  myOnlineStars = {}; myVotesSent = false; dishSubmitted = false; myDish = {dish:'',ings:[]};
+  myOnlineStars = {}; myVotesSent = false; dishSubmitted = false; myDish = {dish:'',ings:[],prep:null};
   gamePhase = 'lobby';
   hostBroadcast({t:'draw', theme, totalTime});
   hostBroadcastLobby();
@@ -247,7 +248,7 @@ function hostFinishCooking(){
   clearInterval(timerId);
   // garante prato de todo mundo que ficou na sala
   onlinePlayers.forEach(p=>{
-    if(!onlineDishes.find(d=>d.id===p.id)) onlineDishes.push({id:p.id,name:p.name,avatar:p.avatar,dish:`Prato Relâmpago de ${p.name}`,ings:['🍕']});
+    if(!onlineDishes.find(d=>d.id===p.id)) onlineDishes.push({id:p.id,name:p.name,avatar:p.avatar,dish:`Prato Relâmpago de ${p.name}`,ings:['🍕'],prep:null});
   });
   hostBroadcast({t:'dishes', dishes:onlineDishes, theme});
   startVotingOnline(onlineDishes);
@@ -263,8 +264,8 @@ function hostFinishVoting(){
   });
   const ranked = onlinePlayers.map(p=>{
     const arr = agg[p.id]||[]; const m = arr.length? arr.reduce((a,b)=>a+b,0)/arr.length:0;
-    const dish = (onlineDishes.find(d=>d.id===p.id)||{dish:'?',ings:[]});
-    return {...p, dish:dish.dish, ings:dish.ings, media:m};
+    const dish = (onlineDishes.find(d=>d.id===p.id)||{dish:'?',ings:[],prep:null});
+    return {...p, dish:dish.dish, ings:dish.ings, prep:dish.prep||null, media:m};
   }).sort((a,b)=>b.media-a.media || (a.name>b.name?1:-1));
   hostBroadcast({t:'podium', ranked, theme, totalTime});
   showPodiumOnline(ranked);
@@ -374,7 +375,7 @@ function startCookingOnlineGuest(){ startCookingOnlineCommon(); startGuestClock(
 function startCookingOnlineCommon(){
   gamePhase='cook';
   dishSubmitted=false; myVotesSent=false;
-  timeLeft = totalTime; myDish={dish:'',ings:[]};
+  timeLeft = totalTime; myDish={dish:'',ings:[],prep:null};
   showScreen('screen-cook');
   document.getElementById('cookTheme').textContent = theme.n;
   document.getElementById('cookTurn').textContent = 'online';
@@ -383,32 +384,20 @@ function startCookingOnlineCommon(){
   const nameEl = document.getElementById('dishName');
   nameEl.value=''; nameEl.disabled=false;
   selectedIngs = new Set();
-  const g=document.getElementById('ingredientGrid'); g.innerHTML='';
-  INGREDIENTS.forEach(ing=>{
-    const b=document.createElement('button'); b.type='button'; b.className='ing';
-    b.setAttribute('aria-pressed','false');
-    b.innerHTML=`<span class="e">${ing}</span>escolher`;
-    b.onclick=()=>{
-      if(selectedIngs.has(ing)) selectedIngs.delete(ing);
-      else { if(selectedIngs.size>=6){ toast('Máximo 6 ingredientes!'); return; } selectedIngs.add(ing); }
-      b.classList.toggle('sel');
-      b.setAttribute('aria-pressed', selectedIngs.has(ing)?'true':'false');
-      document.getElementById('ingCount').textContent=`${selectedIngs.size}/6`;
-    };
-    g.appendChild(b);
-  });
-  document.getElementById('ingCount').textContent='0/6';
+  resetKitchenView();
+  renderSimpleIngredientGrid();
+  syncIngredientUI();
   document.getElementById('queue').innerHTML = `<span class="qchip">🌐 ${onlinePlayers.length} chefs cozinhando juntos...</span>`;
   // troca botões para modo online
-  const row = document.querySelector('#screen-cook .row');
+  const row = document.getElementById('cookActions');
   row.innerHTML = `<button class="btn primary big" onclick="submitDishOnline(false)">✅ Enviar meu prato</button>`;
   updateTimerUI();
 }
 function setCookLocked(locked){
   const nameEl = document.getElementById('dishName');
   if(nameEl) nameEl.disabled = locked;
-  document.querySelectorAll('#ingredientGrid .ing').forEach(b=>{ b.disabled = locked; });
-  const btn = document.querySelector('#screen-cook .row .btn');
+  setKitchenLocked(locked);
+  const btn = document.querySelector('#cookActions .btn');
   if(btn){ btn.disabled = locked; btn.textContent = locked ? '✅ Prato enviado' : '✅ Enviar meu prato'; }
 }
 function startTimerOnlineHost(){
@@ -443,7 +432,11 @@ function submitDishOnline(auto){
   const name = (document.getElementById('dishName')?.value || '').trim();
   if(!auto && !name){ toast('Dê um nome ao prato!'); document.getElementById('dishName').focus(); return; }
   dishSubmitted = true;
-  myDish = { dish: name || `Prato de ${myName}`, ings: [...selectedIngs].length? [...selectedIngs] : [randomIngredient()] };
+  myDish = {
+    dish: name || `Prato de ${myName}`,
+    ings: [...selectedIngs].length? [...selectedIngs] : [randomIngredient()],
+    prep: safePrep(kitchenPrep)
+  };
   if(ROLE==='host'){
     const i = onlineDishes.findIndex(x=>x.id===myId);
     const rec={id:myId,name:myName,avatar:myAvatar,...myDish};
@@ -479,6 +472,7 @@ function startVotingOnline(dishesList){
     html += `<div class="vote-card" data-owner="${d.id}">
       <div class="dish">${d.avatar} “${d.dish}”</div>
       <div>por <b>${d.name}</b></div><div class="ings">${(d.ings||[]).join(' ')}</div>
+      ${d.prep ? `<div class="prep-badge">${PREP_LABEL[d.prep]}</div>` : ''}
       <div class="stars mini" data-mini="${d.id}">
         ${[1,2,3,4,5].map(i=>`<span data-v="${i}" data-o="${d.id}" role="button" tabindex="0" aria-label="${i} ${i===1?'estrela':'estrelas'}" aria-pressed="false">⭐</span>`).join('')}
       </div></div>`;

@@ -15,6 +15,16 @@ Também funciona abrindo o `index.html` direto no navegador.
 
 O fluxo é sempre o mesmo: escolher personagens → sortear tema + tempo → montar o prato (até 6 ingredientes) → avaliar com estrelas → pódio.
 
+## 🧑‍🍳 A cozinha em primeira pessoa
+
+Na hora de cozinhar você fica dentro de uma cozinha: arraste para olhar em volta (ou use as setas ← →) e clique nos móveis.
+
+- 🧊 **Geladeira** e 🚪 **armário** abrem e mostram ingredientes de verdade: ao pegar, eles saem do lugar.
+- 🧂 **Temperos** na prateleira e 🧺 **cesto** na bancada completam os 30 ingredientes.
+- 🍳 **Panela**, 🥤 **liquidificador** e 🍽️ **pratos** dão um preparo especial ao prato, que aparece na votação.
+- 🥣 A tigela guarda até 6 ingredientes; clique nela para devolver.
+- 🧾 Quem preferir (ou usar leitor de tela) pode abrir a lista completa de ingredientes.
+
 ## 🛠️ Tecnologia
 
 HTML + CSS + JS puro, sem build. O modo online usa [PeerJS](https://peerjs.com) (P2P, sem servidor próprio).
