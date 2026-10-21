@@ -2,7 +2,10 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="description" content="Culinária Criativa: jogo de cozinha para até 10 jogadores, no mesmo aparelho ou online. Sorteie tema e tempo, monte seu prato e dispute o pódio!">
+<meta name="theme-color" content="#7c2d12">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍳</text></svg>">
 <title>Culinária Criativa — Jogo para até 10 Jogadores</title>
 <link rel="stylesheet" href="styles.css">
 </head>
@@ -54,7 +57,7 @@
           <button class="btn secondary" onclick="joinRoom()">Entrar</button>
         </div>
       </div>
-      <p id="onlineStatus" class="muted center"></p>
+      <p id="onlineStatus" class="muted center" role="status" aria-live="polite"></p>
       <div class="row"><button class="btn ghost" onclick="showScreen('screen-home')">← Voltar</button></div>
     </div>
   </section>
@@ -63,6 +66,7 @@
   <section id="screen-lobby" class="screen">
     <div class="card center">
       <h2>🏠 Sala <span id="lobbyCode" class="room-code">----</span></h2>
+      <p id="lobbyCount" class="muted"></p>
       <p class="muted">Passe esse código para os amigos entrarem. Mínimo 2, máximo 10 chefs.</p>
       <div id="lobbyPlayers" class="lobby-list"></div>
       <div id="lobbyDraw" class="draw-grid" style="display:none">
@@ -72,6 +76,9 @@
       <div class="row center-row">
         <button id="btnDrawOnline" class="btn secondary" onclick="hostDrawAll()" style="display:none">🎲 Sortear Tema + Tempo</button>
         <button id="btnStartOnline" class="btn primary big" onclick="hostStartGame()" style="display:none" disabled>🔒 Aguardando sorteio</button>
+      </div>
+      <div class="row center-row">
+        <button class="btn ghost" onclick="leaveGame()">🚪 Sair da sala</button>
       </div>
       <p id="lobbyWait" class="muted">Aguardando o anfitrião sortear e começar... ☕</p>
     </div>
@@ -118,6 +125,7 @@
       </div>
       <div class="row center-row">
         <button class="btn ghost" onclick="showScreen('screen-setup')">← Editar jogadores</button>
+        <button class="btn secondary" onclick="drawAll()">🎲 Sortear Tudo</button>
         <button id="btnStartCooking" class="btn primary big" onclick="startCooking()" disabled>🔒 Sorteie tema e tempo</button>
       </div>
     </div>
@@ -127,7 +135,7 @@
   <section id="screen-cook" class="screen">
     <div class="cook-header">
       <div class="pill">📋 Tema: <b id="cookTheme"></b></div>
-      <div id="timer" class="timer">⏱️ --:--</div>
+      <div id="timer" class="timer" role="timer">⏱️ --:--</div>
       <div class="pill">🍽️ Chef <b id="cookTurn"></b></div>
     </div>
     <div class="progress"><div id="progressBar"></div></div>
@@ -171,16 +179,14 @@
       <p id="podiumTheme" class="muted"></p>
       <div id="podium" class="podium"></div>
       <div id="fullRank" class="rank-list"></div>
-      <div class="row center-row">
-        <button class="btn ghost" onclick="location.reload()">🔄 Novo jogo</button>
-        <button class="btn primary" onclick="rematch()">🍳 Revanche (mesmos jogadores)</button>
-      </div>
+      <div id="podiumActions" class="row center-row"></div>
     </div>
   </section>
 
 </main>
 
 <footer>Feito com ❤️ para jogar em família e amigos — Culinária Criativa</footer>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
 <canvas id="confetti"></canvas>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script src="script.js"></script>

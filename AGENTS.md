@@ -48,5 +48,8 @@ Regras:
 
 ## Armadilhas conhecidas
 
-- Os botões da tela de cozinhar são trocados pelo modo online; ao voltar para o modo local é preciso restaurar o HTML original.
-- O botão "Revanche" do pódio chama a lógica do modo local e não funciona em partidas online.
+- Os botões da tela de cozinhar são trocados pelo modo online. O HTML original é guardado em `_localCookRowHTML` no carregamento e restaurado por `startCooking()`; não remova essa proteção.
+- O pódio usa `#podiumActions` e `renderPodiumActions()` para escolher as ações conforme o modo. Não volte a fixar botões no HTML: "Revanche" local não funciona em partida online.
+- No modo local cada chef tem o tempo sorteado, controlado por `startLocalTurn()`. No online o tempo é único para todos, controlado pelo host.
+- `online.js` depende dos globais de `script.js` (`toast`, `AVATARS`, `updateTimerUI`, `renderPodiumActions`, `fireConfetti`) e é carregado depois dele.
+- A entrada de novos jogadores é bloqueada depois que a partida começa (`gamePhase !== 'lobby'`).

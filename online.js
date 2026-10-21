@@ -8,15 +8,32 @@ let guestConns = {}; // host: peerId -> conn
 let myId = 'p' + Math.random().toString(36).slice(2, 9);
 let myName = '', myAvatar = '👨‍🍳';
 let roomCode = '';
-let onlinePlayers = []; // {id,name,avatar}
+let onlinePlayers = []; // {id,name,avatar,connPeer?}
 let onlineDishes = [];  // {id,name,avatar,dish,ings}
-let onlineVotes = {};   // ownerId -> [stars]
+let onlineVotes = {};   // voterId -> {ownerId: stars}
 let myDish = { dish: '', ings: [] };
 let myOnlineStars = {}; // ownerId -> stars (meu voto)
 let hostSelAvatar = '👨‍🍳', guestSelAvatar = '👩‍🍳';
+let gamePhase = 'lobby'; // lobby | cook | vote | podium
+let dishSubmitted = false;
+let myVotesSent = false;
+let connecting = false;
+let hostTry = 3;
+let guestClockBase = { left: 0, at: 0 };
+
+const PEER_ERRORS = {
+  'peer-unavailable': 'Sala não encontrada. Confira o código.',
+  'network': 'Sem conexão. Verifique sua internet.',
+  'server-error': 'Servidor de conexão indisponível. Tente de novo.',
+  'unavailable-id': 'Esse código de sala já está em uso.',
+  'browser-incompatible': 'Seu navegador não suporta o modo online.',
+  'ssl-unavailable': 'Conexão segura indisponível nesta rede.'
+};
+function peerErrorMsg(type){ return PEER_ERRORS[type] || ('Erro de conexão (' + type + ').'); }
 
 function goOnline(){
   MODE = 'online';
+  setStatus('');
   showScreen('screen-online');
   buildAvatarPicker('hostAvatars', v => hostSelAvatar = v, hostSelAvatar);
   buildAvatarPicker('guestAvatars', v => guestSelAvatar = v, guestSelAvatar);
@@ -24,28 +41,57 @@ function goOnline(){
 function buildAvatarPicker(elId, onPick, initial){
   const el = document.getElementById(elId); if(!el) return;
   el.innerHTML = '';
-  let sel = initial;
   AVATARS.forEach(a=>{
     const b = document.createElement('button');
-    b.type='button'; b.className='avatar'+(a===sel?' sel':''); b.textContent=a;
-    b.onclick=()=>{ el.querySelectorAll('.avatar').forEach(x=>x.classList.remove('sel')); b.classList.add('sel'); onPick(a); };
+    b.type='button'; b.className='avatar'+(a===initial?' sel':''); b.textContent=a;
+    b.setAttribute('aria-label', `Personagem ${a}`);
+    b.setAttribute('aria-pressed', a===initial ? 'true' : 'false');
+    b.onclick=()=>{
+      el.querySelectorAll('.avatar').forEach(x=>{ x.classList.remove('sel'); x.setAttribute('aria-pressed','false'); });
+      b.classList.add('sel'); b.setAttribute('aria-pressed','true');
+      onPick(a);
+    };
     el.appendChild(b);
   });
-  onPick(sel);
+  onPick(initial);
 }
-function setStatus(t){ document.getElementById('onlineStatus').textContent = t; }
+function setStatus(t){ const el = document.getElementById('onlineStatus'); if(el) el.textContent = t; }
 function genCode(){ const L='ABCDEFGHJKMNPQRSTUVWXYZ'; let s=''; for(let i=0;i<4;i++) s+=L[Math.floor(Math.random()*L.length)]; return s; }
 function peerIdFor(code){ return 'culinaria-criativa-' + code; }
+function cleanupPeer(){
+  const conns = Object.values(guestConns);
+  guestConns = {};
+  conns.forEach(c=>{ try{ c.close(); }catch(e){} });
+  if(hostConn){ const c = hostConn; hostConn = null; try{ c.close(); }catch(e){} }
+  if(peer){ const p = peer; peer = null; try{ p.destroy(); }catch(e){} }
+}
+function updateLobbyCount(){
+  const el = document.getElementById('lobbyCount');
+  if(el) el.textContent = `${onlinePlayers.length}/10 chefs na sala`;
+}
 
 // ---------- CRIAR SALA (host) ----------
 function createRoom(){
+  if(connecting) return;
   myName = (document.getElementById('hostName').value || 'Anfitrião').trim().slice(0,14);
   myAvatar = hostSelAvatar; ROLE='host'; MODE='online';
+  cleanupPeer();
+  connecting = true;
+  gamePhase = 'lobby';
+  onlinePlayers = []; onlineDishes = []; onlineVotes = {};
+  theme = null; totalTime = 0;
   roomCode = genCode();
+  hostTry = 3;
+  openHostPeer();
+}
+function openHostPeer(){
   setStatus('Criando sala ' + roomCode + '...');
   peer = new Peer(peerIdFor(roomCode));
   peer.on('open', ()=>{
+    connecting = false; hostTry = 3;
     onlinePlayers = [{id:myId, name:myName, avatar:myAvatar}];
+    onlineDishes = []; onlineVotes = {}; myOnlineStars = {}; myDish = {dish:'',ings:[]};
+    theme = null; totalTime = 0; gamePhase = 'lobby';
     showScreen('screen-lobby');
     renderLobby();
     setStatus('');
@@ -53,37 +99,110 @@ function createRoom(){
   peer.on('connection', conn=>{
     conn.on('data', d=>hostOnData(conn, d));
     conn.on('open', ()=>{ guestConns[conn.peer]=conn; });
-    conn.on('close', ()=>{ delete guestConns[conn.peer]; onlinePlayers = onlinePlayers.filter(p=>p.connPeer!==conn.peer); hostBroadcastLobby(); });
+    conn.on('close', ()=>{
+      if(!guestConns[conn.peer]) return; // conexão já tratada/encerrada
+      delete guestConns[conn.peer];
+      const gone = onlinePlayers.find(p=>p.connPeer===conn.peer);
+      onlinePlayers = onlinePlayers.filter(p=>p.connPeer!==conn.peer);
+      if(gone) hostPlayerLeft(gone);
+    });
   });
-  peer.on('error', e=> setStatus('Erro: ' + e.type + '. Tente outro código ou recarregue.'));
+  peer.on('disconnected', ()=>{ try{ peer.reconnect(); }catch(e){} });
+  peer.on('error', e=>{
+    // código já em uso: sorteia outro e tenta de novo
+    if(e.type==='unavailable-id' && hostTry>1){
+      hostTry--;
+      const old = peer; peer = null;
+      try{ old.destroy(); }catch(_){}
+      roomCode = genCode();
+      openHostPeer();
+      return;
+    }
+    connecting = false;
+    setStatus(peerErrorMsg(e.type));
+  });
 }
-function hostOnData(conn, d){
-  if(d.t==='join'){
-    if(onlinePlayers.length>=10){ conn.send({t:'error', msg:'Sala cheia (10 jogadores)!'}); return; }
-    // remove duplicado
-    onlinePlayers = onlinePlayers.filter(p=>p.id!==d.id);
-    onlinePlayers.push({id:d.id, name:d.name, avatar:d.avatar, connPeer:conn.peer});
-    guestConns[conn.peer]=conn;
-    hostBroadcastLobby();
+function hostPlayerLeft(gone){
+  toast(`👋 ${gone.name} saiu da sala.`);
+  hostBroadcast({t:'left', name:gone.name});
+  hostBroadcastLobby();
+  if(gamePhase==='cook' || gamePhase==='vote'){
+    if(onlinePlayers.length<2){
+      clearInterval(timerId);
+      gamePhase='lobby';
+      showScreen('screen-lobby');
+      renderLobby();
+      toast('😢 Faltou gente! Convide mais chefs para jogar.');
+      return;
+    }
   }
-  if(d.t==='dish'){
-    const i = onlineDishes.findIndex(x=>x.id===d.id);
-    const pl = onlinePlayers.find(p=>p.id===d.id) || {name:'?', avatar:'🍳'};
-    const rec = {id:d.id, name:pl.name, avatar:pl.avatar, dish:d.dish, ings:d.ings};
-    if(i>=0) onlineDishes[i]=rec; else onlineDishes.push(rec);
+  if(gamePhase==='cook'){
+    onlineDishes = onlineDishes.filter(d=>onlinePlayers.some(p=>p.id===d.id));
     hostBroadcast({t:'count', n:onlineDishes.length, total:onlinePlayers.length});
     if(onlineDishes.length>=onlinePlayers.length) hostFinishCooking();
-  }
-  if(d.t==='votes'){
-    onlineVotes[d.voterId] = d.votes; // {ownerId:stars}
+  } else if(gamePhase==='vote'){
+    delete onlineVotes[gone.id];
     hostBroadcast({t:'votecount', n:Object.keys(onlineVotes).length, total:onlinePlayers.length});
     if(Object.keys(onlineVotes).length>=onlinePlayers.length) hostFinishVoting();
   }
 }
-function hostBroadcast(msg){ Object.values(guestConns).forEach(c=>{ try{ c.open && c.send(msg); }catch(e){} }); }
+function hostOnData(conn, d){
+  if(d.t==='join'){
+    if(gamePhase!=='lobby'){
+      try{ conn.send({t:'error', msg:'A partida já começou. Peça outra sala.'}); }catch(e){}
+      setTimeout(()=>{ try{ conn.close(); }catch(e){} }, 500);
+      return;
+    }
+    if(onlinePlayers.length>=10){
+      try{ conn.send({t:'error', msg:'Sala cheia (10 jogadores)!'}); }catch(e){}
+      setTimeout(()=>{ try{ conn.close(); }catch(e){} }, 500);
+      return;
+    }
+    onlinePlayers = onlinePlayers.filter(p=>p.id!==d.id && p.connPeer!==conn.peer);
+    onlinePlayers.push({
+      id: String(d.id||conn.peer).slice(0,20),
+      name: String(d.name||'Chef').trim().slice(0,14) || 'Chef',
+      avatar: d.avatar || '🧑‍🍳',
+      connPeer: conn.peer
+    });
+    guestConns[conn.peer]=conn;
+    hostBroadcastLobby();
+    return;
+  }
+  if(gamePhase==='cook' && d.t==='dish'){
+    const pl = onlinePlayers.find(p=>p.id===d.id) || {name:'?', avatar:'🍳'};
+    const rec = {
+      id:d.id, name:pl.name, avatar:pl.avatar,
+      dish:String(d.dish||'Prato misterioso').slice(0,40),
+      ings: Array.isArray(d.ings) ? d.ings.slice(0,6) : []
+    };
+    const i = onlineDishes.findIndex(x=>x.id===d.id);
+    if(i>=0) onlineDishes[i]=rec; else onlineDishes.push(rec);
+    hostBroadcast({t:'count', n:onlineDishes.length, total:onlinePlayers.length});
+    if(onlineDishes.length>=onlinePlayers.length) hostFinishCooking();
+    return;
+  }
+  if(gamePhase==='vote' && d.t==='votes'){
+    const clean = {};
+    if(d.votes && typeof d.votes==='object'){
+      Object.entries(d.votes).forEach(([owner,stars])=>{
+        const s = +stars;
+        if(s>=1 && s<=5) clean[owner] = s;
+      });
+    }
+    onlineVotes[d.voterId] = clean;
+    hostBroadcast({t:'votecount', n:Object.keys(onlineVotes).length, total:onlinePlayers.length});
+    if(Object.keys(onlineVotes).length>=onlinePlayers.length) hostFinishVoting();
+  }
+}
+function hostBroadcast(msg){
+  Object.values(guestConns).forEach(c=>{
+    try{ if(c.open) c.send(msg); }catch(e){}
+  });
+}
 function hostBroadcastLobby(){
   const clean = onlinePlayers.map(({id,name,avatar})=>({id,name,avatar}));
-  hostBroadcast({t:'lobby', players:clean, code:roomCode});
+  hostBroadcast({t:'lobby', players:clean, code:roomCode, theme, totalTime});
   renderLobby();
 }
 function renderLobby(){
@@ -95,28 +214,38 @@ function renderLobby(){
   document.getElementById('btnStartOnline').style.display = isHost?'':'none';
   document.getElementById('lobbyWait').style.display = isHost?'none':'';
   document.getElementById('lobbyDraw').style.display = (theme||totalTime)?'grid':'none';
-  if(theme) { document.getElementById('themeSlotOnline').textContent = theme.n; document.getElementById('themeDescOnline').textContent = theme.d; }
-  if(totalTime) { document.getElementById('timeSlotOnline').textContent = totalTime+'s'; document.getElementById('timeDescOnline').textContent = totalTime+' segundos para todos cozinharem!'; }
+  document.getElementById('themeSlotOnline').textContent = theme ? theme.n : '❓';
+  document.getElementById('themeDescOnline').textContent = theme ? theme.d : '';
+  document.getElementById('timeSlotOnline').textContent = totalTime ? totalTime+'s' : '❓';
+  document.getElementById('timeDescOnline').textContent = totalTime ? totalTime+' segundos para cada prato!' : '';
+  updateLobbyCount();
 }
 function hostDrawAll(){
   theme = THEMES[Math.floor(Math.random()*THEMES.length)];
   totalTime = TIMES[Math.floor(Math.random()*TIMES.length)];
   onlineDishes = []; onlineVotes = {};
+  myOnlineStars = {}; myVotesSent = false; dishSubmitted = false; myDish = {dish:'',ings:[]};
+  gamePhase = 'lobby';
   hostBroadcast({t:'draw', theme, totalTime});
+  hostBroadcastLobby();
   renderLobby();
   const b=document.getElementById('btnStartOnline');
   b.disabled=false; b.textContent=`🍳 Começar! (${theme.n} • ${totalTime}s)`;
 }
 function hostStartGame(){
-  if(onlinePlayers.length<2){ alert('Chame mais amigos! Mínimo 2 jogadores.'); return; }
-  if(!theme||!totalTime){ alert('Sorteie antes!'); return; }
-  onlineDishes=[]; onlineVotes={};
+  if(onlinePlayers.length<2){ toast('Chame mais amigos! Mínimo 2 jogadores.'); return; }
+  if(!theme||!totalTime){ toast('Sorteie antes!'); return; }
+  onlineDishes=[]; onlineVotes={}; myOnlineStars={}; myVotesSent=false;
+  dishSubmitted=false; myDish={dish:'',ings:[]};
+  gamePhase='cook';
   hostBroadcast({t:'start', theme, totalTime});
   startCookingOnlineHost();
 }
 function hostFinishCooking(){
+  if(gamePhase!=='cook') return;
+  gamePhase='vote';
   clearInterval(timerId);
-  // garante prato de todo mundo
+  // garante prato de todo mundo que ficou na sala
   onlinePlayers.forEach(p=>{
     if(!onlineDishes.find(d=>d.id===p.id)) onlineDishes.push({id:p.id,name:p.name,avatar:p.avatar,dish:`Prato Relâmpago de ${p.name}`,ings:['🍕']});
   });
@@ -124,6 +253,8 @@ function hostFinishCooking(){
   startVotingOnline(onlineDishes);
 }
 function hostFinishVoting(){
+  if(gamePhase!=='vote') return;
+  gamePhase='podium';
   // calcula médias
   const agg = {}; // ownerId -> [stars]
   onlinePlayers.forEach(p=>agg[p.id]=[]);
@@ -134,74 +265,135 @@ function hostFinishVoting(){
     const arr = agg[p.id]||[]; const m = arr.length? arr.reduce((a,b)=>a+b,0)/arr.length:0;
     const dish = (onlineDishes.find(d=>d.id===p.id)||{dish:'?',ings:[]});
     return {...p, dish:dish.dish, ings:dish.ings, media:m};
-  }).sort((a,b)=>b.media-a.media);
+  }).sort((a,b)=>b.media-a.media || (a.name>b.name?1:-1));
   hostBroadcast({t:'podium', ranked, theme, totalTime});
   showPodiumOnline(ranked);
+}
+function onlineRematch(){
+  if(ROLE!=='host') return;
+  if(gamePhase!=='podium') return;
+  onlineDishes=[]; onlineVotes={}; myOnlineStars={}; myVotesSent=false;
+  dishSubmitted=false; myDish={dish:'',ings:[]};
+  theme=null; totalTime=0;
+  hostDrawAll();
+  showScreen('screen-lobby');
+  renderLobby();
+  toast('🎲 Novo tema e tempo sorteados!');
 }
 
 // ---------- ENTRAR (guest) ----------
 function joinRoom(){
+  if(connecting) return;
   myName = (document.getElementById('guestName').value || 'Convidado').trim().slice(0,14);
   myAvatar = guestSelAvatar;
   roomCode = (document.getElementById('roomCodeInput').value || '').trim().toUpperCase();
-  if(roomCode.length!==4){ setStatus('Digite o código de 4 letras.'); return; }
-  ROLE='guest'; MODE='online';
+  if(roomCode.length!==4){ setStatus('Digite o código de 4 letras.'); document.getElementById('roomCodeInput').focus(); return; }
+  ROLE='guest'; MODE='online'; gamePhase='lobby';
+  cleanupPeer();
+  connecting = true;
   setStatus('Entrando na sala ' + roomCode + '...');
   peer = new Peer(); // id aleatório
   peer.on('open', ()=>{
-    hostConn = peer.connect(peerIdFor(roomCode), {reliable:true});
-    hostConn.on('open', ()=> hostConn.send({t:'join', id:myId, name:myName, avatar:myAvatar}));
-    hostConn.on('data', guestOnData);
-    hostConn.on('error', ()=> setStatus('Erro de conexão.'));
+    const conn = peer.connect(peerIdFor(roomCode), {reliable:true});
+    hostConn = conn;
+    conn.on('open', ()=>{
+      connecting = false;
+      setStatus('Conectado! Entrando...');
+      try{ conn.send({t:'join', id:myId, name:myName, avatar:myAvatar}); }catch(e){}
+    });
+    conn.on('data', guestOnData);
+    conn.on('close', ()=>{
+      if(hostConn!==conn) return;
+      connecting = false;
+      if(MODE!=='online') return;
+      toast('O anfitrião encerrou a sala.');
+      setTimeout(()=>{ if(MODE==='online' && ROLE==='guest'){ showScreen('screen-online'); setStatus('Sala encerrada.'); } }, 1200);
+    });
+    conn.on('error', ()=>{ connecting=false; setStatus('Erro de conexão. Tente de novo.'); });
   });
-  peer.on('error', e=> setStatus('Não achei a sala. Confira o código e tente de novo. ('+e.type+')'));
+  peer.on('error', e=>{
+    connecting = false;
+    setStatus(peerErrorMsg(e.type) + ' Confira o código e tente de novo.');
+  });
+  // não deixa a tela travada em "Entrando..." para sempre
+  setTimeout(()=>{
+    if(connecting){ connecting=false; setStatus('Não deu para conectar. Confira o código e tente de novo.'); }
+  }, 15000);
 }
 function guestOnData(d){
-  if(d.t==='error'){ alert(d.msg); return; }
-  if(d.t==='lobby'){ onlinePlayers = d.players; roomCode = d.code; showScreen('screen-lobby'); renderLobbyGuest(d); }
-  if(d.t==='draw'){ theme=d.theme; totalTime=d.totalTime; if(document.getElementById('screen-lobby').classList.contains('active')) renderLobbyGuest({players:onlinePlayers}); }
-  if(d.t==='start'){ theme=d.theme; totalTime=d.totalTime; onlineDishes=[]; onlineVotes={}; startCookingOnlineGuest(); }
-  if(d.t==='count'){ const q=document.getElementById('queue'); if(q) q.innerHTML=`<span class="qchip">🍳 ${d.n}/${d.total} pratos prontos...</span>`; }
-  if(d.t==='tick'){ timeLeft=d.left; updateTimerUI(); }
-  if(d.t==='timeup'){ alert('⏰ Tempo esgotado!'); submitDishOnline(true); }
-  if(d.t==='dishes'){ onlineDishes=d.dishes; theme=d.theme; startVotingOnline(d.dishes); }
-  if(d.t==='votecount'){ document.getElementById('voteProgress').textContent = `🗳️ ${d.n}/${d.total} votaram...`; }
+  if(d.t==='error'){ toast(d.msg); return; }
+  if(d.t==='lobby'){
+    onlinePlayers = d.players || [];
+    roomCode = d.code || roomCode;
+    if(d.theme) theme = d.theme;
+    if(d.totalTime) totalTime = d.totalTime;
+    // durante a partida só atualiza os dados, sem puxar o jogador para o lobby
+    if(gamePhase==='lobby') showScreen('screen-lobby');
+    renderLobbyGuest();
+    return;
+  }
+  if(d.t==='draw'){
+    theme = d.theme; totalTime = d.totalTime; gamePhase='lobby';
+    showScreen('screen-lobby');
+    renderLobbyGuest();
+    return;
+  }
+  if(d.t==='start'){
+    theme=d.theme; totalTime=d.totalTime;
+    onlineDishes=[]; onlineVotes={}; myOnlineStars={}; myVotesSent=false;
+    dishSubmitted=false; myDish={dish:'',ings:[]};
+    startCookingOnlineGuest();
+    return;
+  }
+  if(d.t==='count'){ const q=document.getElementById('queue'); if(q) q.innerHTML=`<span class="qchip">🍳 ${d.n}/${d.total} pratos prontos...</span>`; return; }
+  if(d.t==='tick'){ timeLeft = d.left; guestClockBase={left:d.left, at:Date.now()}; updateTimerUI(); return; }
+  if(d.t==='timeup'){ toast('⏰ Tempo esgotado!'); clearInterval(timerId); submitDishOnline(true); return; }
+  if(d.t==='left'){ toast(`👋 ${d.name} saiu da sala.`); return; }
+  if(d.t==='dishes'){ onlineDishes=d.dishes; theme=d.theme; startVotingOnline(d.dishes); return; }
+  if(d.t==='votecount'){ document.getElementById('voteProgress').textContent = `🗳️ ${d.n}/${d.total} votaram...`; return; }
   if(d.t==='podium'){ showPodiumOnline(d.ranked); }
 }
-function renderLobbyGuest(d){
-  if(d.players) onlinePlayers = d.players;
+function renderLobbyGuest(){
   document.getElementById('lobbyCode').textContent = roomCode;
   document.getElementById('lobbyPlayers').innerHTML = onlinePlayers.map(p=>`<span class="qchip ${p.id===myId?'done':''}">${p.avatar} ${p.name}${p.id===myId?' (você)':''}</span>`).join('');
   document.getElementById('btnDrawOnline').style.display='none';
   document.getElementById('btnStartOnline').style.display='none';
   document.getElementById('lobbyWait').style.display='';
-  if(theme||totalTime){
-    document.getElementById('lobbyDraw').style.display='grid';
-    if(theme){ document.getElementById('themeSlotOnline').textContent=theme.n; document.getElementById('themeDescOnline').textContent=theme.d; }
-    if(totalTime){ document.getElementById('timeSlotOnline').textContent=totalTime+'s'; }
-  }
+  const showDraw = !!(theme||totalTime);
+  document.getElementById('lobbyDraw').style.display = showDraw ? 'grid' : 'none';
+  document.getElementById('themeSlotOnline').textContent = theme ? theme.n : '❓';
+  document.getElementById('themeDescOnline').textContent = theme ? theme.d : '';
+  document.getElementById('timeSlotOnline').textContent = totalTime ? totalTime+'s' : '❓';
+  document.getElementById('timeDescOnline').textContent = totalTime ? totalTime+' segundos para cada prato!' : '';
+  updateLobbyCount();
 }
 
 // ---------- COZINHAR ONLINE (cada um no seu aparelho) ----------
 function startCookingOnlineHost(){ startCookingOnlineCommon(); startTimerOnlineHost(); }
-function startCookingOnlineGuest(){ startCookingOnlineCommon(); }
+function startCookingOnlineGuest(){ startCookingOnlineCommon(); startGuestClock(); }
 function startCookingOnlineCommon(){
+  gamePhase='cook';
+  dishSubmitted=false; myVotesSent=false;
   timeLeft = totalTime; myDish={dish:'',ings:[]};
   showScreen('screen-cook');
   document.getElementById('cookTheme').textContent = theme.n;
   document.getElementById('cookTurn').textContent = 'online';
   document.getElementById('cookAvatar').textContent = myAvatar;
   document.getElementById('cookName').textContent = myName + ' (você)';
-  document.getElementById('dishName').value='';
+  const nameEl = document.getElementById('dishName');
+  nameEl.value=''; nameEl.disabled=false;
   selectedIngs = new Set();
   const g=document.getElementById('ingredientGrid'); g.innerHTML='';
   INGREDIENTS.forEach(ing=>{
     const b=document.createElement('button'); b.type='button'; b.className='ing';
+    b.setAttribute('aria-pressed','false');
     b.innerHTML=`<span class="e">${ing}</span>escolher`;
     b.onclick=()=>{
       if(selectedIngs.has(ing)) selectedIngs.delete(ing);
-      else { if(selectedIngs.size>=6){ alert('Máximo 6 ingredientes!'); return; } selectedIngs.add(ing); }
-      b.classList.toggle('sel'); document.getElementById('ingCount').textContent=`${selectedIngs.size}/6`;
+      else { if(selectedIngs.size>=6){ toast('Máximo 6 ingredientes!'); return; } selectedIngs.add(ing); }
+      b.classList.toggle('sel');
+      b.setAttribute('aria-pressed', selectedIngs.has(ing)?'true':'false');
+      document.getElementById('ingCount').textContent=`${selectedIngs.size}/6`;
     };
     g.appendChild(b);
   });
@@ -212,85 +404,125 @@ function startCookingOnlineCommon(){
   row.innerHTML = `<button class="btn primary big" onclick="submitDishOnline(false)">✅ Enviar meu prato</button>`;
   updateTimerUI();
 }
+function setCookLocked(locked){
+  const nameEl = document.getElementById('dishName');
+  if(nameEl) nameEl.disabled = locked;
+  document.querySelectorAll('#ingredientGrid .ing').forEach(b=>{ b.disabled = locked; });
+  const btn = document.querySelector('#screen-cook .row .btn');
+  if(btn){ btn.disabled = locked; btn.textContent = locked ? '✅ Prato enviado' : '✅ Enviar meu prato'; }
+}
 function startTimerOnlineHost(){
   clearInterval(timerId);
+  const endAt = Date.now() + totalTime*1000;
+  timeLeft = totalTime;
+  let sent = -1;
   updateTimerUI();
   timerId=setInterval(()=>{
-    timeLeft--; updateTimerUI();
-    hostBroadcast({t:'tick', left:timeLeft});
+    timeLeft = Math.max(0, Math.ceil((endAt-Date.now())/1000));
+    updateTimerUI();
+    if(timeLeft!==sent){ sent=timeLeft; hostBroadcast({t:'tick', left:timeLeft}); }
     if(timeLeft<=0){
       clearInterval(timerId);
       hostBroadcast({t:'timeup'});
-      // host também envia o próprio prato se ainda não enviou
       submitDishOnline(true);
-      setTimeout(()=>{ if(onlineDishes.length<onlinePlayers.length) hostFinishCooking(); }, 1500);
+      setTimeout(()=>{ if(gamePhase==='cook') hostFinishCooking(); }, 1500);
     }
-  },1000);
+  },250);
+}
+function startGuestClock(){
+  clearInterval(timerId);
+  guestClockBase = { left: timeLeft, at: Date.now() };
+  timerId = setInterval(()=>{
+    const elapsed = (Date.now()-guestClockBase.at)/1000;
+    timeLeft = Math.max(0, Math.ceil(guestClockBase.left - elapsed));
+    updateTimerUI();
+  },250);
 }
 function submitDishOnline(auto){
+  if(dishSubmitted) return;
   const name = (document.getElementById('dishName')?.value || '').trim();
-  if(!auto && !name){ alert('Dê um nome ao prato!'); return; }
-  myDish = { dish: name || `Prato de ${myName}`, ings: [...selectedIngs].length? [...selectedIngs] : ['🍕'] };
+  if(!auto && !name){ toast('Dê um nome ao prato!'); document.getElementById('dishName').focus(); return; }
+  dishSubmitted = true;
+  myDish = { dish: name || `Prato de ${myName}`, ings: [...selectedIngs].length? [...selectedIngs] : [randomIngredient()] };
   if(ROLE==='host'){
     const i = onlineDishes.findIndex(x=>x.id===myId);
     const rec={id:myId,name:myName,avatar:myAvatar,...myDish};
     if(i>=0) onlineDishes[i]=rec; else onlineDishes.push(rec);
-    document.getElementById('queue').innerHTML=`<span class="qchip done">✅ Prato enviado! Aguardando outros... (${onlineDishes.length}/${onlinePlayers.length})</span>`;
+    document.getElementById('queue').innerHTML=`<span class="qchip done">✅ Prato enviado! (${onlineDishes.length}/${onlinePlayers.length})</span>`;
     if(onlineDishes.length>=onlinePlayers.length) hostFinishCooking();
   } else {
-    hostConn.send({t:'dish', id:myId, ...myDish});
+    try{ hostConn.send({t:'dish', id:myId, ...myDish}); }catch(e){}
     document.getElementById('queue').innerHTML=`<span class="qchip done">✅ Prato enviado! Aguardando outros...</span>`;
   }
+  setCookLocked(true);
 }
 
 // ---------- VOTAR ONLINE ----------
 function startVotingOnline(dishesList){
-  onlineDishes = dishesList; myOnlineStars={}; currentVote=0;
+  gamePhase='vote';
+  clearInterval(timerId);
+  onlineDishes = dishesList; myOnlineStars={}; currentVote=0; myVotesSent=false;
   showScreen('screen-vote');
   const others = dishesList.filter(d=>d.id!==myId);
-  if(!others.length){ document.getElementById('voteCard').innerHTML='Só você na sala?'; return; }
+  const btn=document.getElementById('btnNextVote');
+  document.getElementById('starsRow').innerHTML='';
+  document.getElementById('voteProgress').textContent='';
+  if(!others.length){
+    document.getElementById('voteCard').innerHTML='<p>Só você na sala? Convide mais chefs!</p>';
+    document.getElementById('voterLine').textContent='';
+    btn.style.display='none';
+    btn.onclick=null;
+    return;
+  }
   let html = `<p>Dê <b>1 a 5 estrelas</b> para cada prato (menos o seu):</p>`;
   others.forEach(d=>{
     html += `<div class="vote-card" data-owner="${d.id}">
       <div class="dish">${d.avatar} “${d.dish}”</div>
       <div>por <b>${d.name}</b></div><div class="ings">${(d.ings||[]).join(' ')}</div>
       <div class="stars mini" data-mini="${d.id}">
-        ${[1,2,3,4,5].map(i=>`<span data-v="${i}" data-o="${d.id}">⭐</span>`).join('')}
+        ${[1,2,3,4,5].map(i=>`<span data-v="${i}" data-o="${d.id}" role="button" tabindex="0" aria-label="${i} ${i===1?'estrela':'estrelas'}" aria-pressed="false">⭐</span>`).join('')}
       </div></div>`;
   });
   document.getElementById('voteCard').innerHTML = html;
   document.getElementById('voterLine').textContent = `🗳️ ${myAvatar} ${myName} votando...`;
-  document.getElementById('voteProgress').textContent = '';
+  btn.style.display=''; btn.disabled=false;
   document.querySelectorAll('#voteCard .stars.mini span').forEach(s=>{
     s.style.filter='grayscale(1)';
-    s.onclick=()=>{
+    const choose=()=>{
       const o=s.dataset.o, v=+s.dataset.v;
       myOnlineStars[o]=v;
       document.querySelectorAll(`[data-mini="${o}"] span`).forEach(x=>{
-        x.style.filter = (+x.dataset.v<=v)?'none':'grayscale(1)';
+        const on = (+x.dataset.v<=v);
+        x.style.filter = on?'none':'grayscale(1)';
+        x.setAttribute('aria-pressed', on?'true':'false');
       });
     };
+    s.onclick=choose;
+    s.onkeydown=(e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); choose(); } };
   });
-  document.getElementById('starsRow').innerHTML='';
-  const btn=document.getElementById('btnNextVote');
   btn.textContent='Enviar meus votos →';
   btn.onclick=submitVotesOnline;
 }
 function submitVotesOnline(){
+  if(myVotesSent){ toast('Você já votou!'); return; }
   const others = onlineDishes.filter(d=>d.id!==myId);
-  for(const o of others){ if(!myOnlineStars[o.id]){ alert(`Faltou avaliar “${o.dish}”!`); return; } }
+  for(const o of others){ if(!myOnlineStars[o.id]){ toast(`Faltou avaliar “${o.dish}”!`); return; } }
+  myVotesSent = true;
+  const btn=document.getElementById('btnNextVote');
+  if(btn){ btn.disabled=true; btn.textContent='✅ Votos enviados'; }
   if(ROLE==='host'){
     onlineVotes[myId]= {...myOnlineStars};
     if(Object.keys(onlineVotes).length>=onlinePlayers.length) hostFinishVoting();
     else document.getElementById('voteProgress').textContent=`✅ Voto enviado! Aguardando outros... (${Object.keys(onlineVotes).length}/${onlinePlayers.length})`;
   } else {
-    hostConn.send({t:'votes', voterId:myId, votes:{...myOnlineStars}});
+    try{ hostConn.send({t:'votes', voterId:myId, votes:{...myOnlineStars}}); }catch(e){}
     document.getElementById('voteProgress').textContent='✅ Voto enviado! Aguardando outros...';
   }
 }
 
 // ---------- PÓDIO ONLINE ----------
 function showPodiumOnline(ranked){
+  MODE='online'; gamePhase='podium';
   showScreen('screen-podium');
   document.getElementById('podiumTheme').textContent=`Tema: ${(theme&&theme.n)||''} • Online com ${ranked.length} chefs`;
   const medals=['🥇','🥈','🥉'];
@@ -309,5 +541,21 @@ function showPodiumOnline(ranked){
     r.innerHTML=`<span>${i+1}º ${p.avatar} ${p.name} — “${p.dish}”</span><span>⭐ ${(p.media||0).toFixed(1)}</span>`;
     fr.appendChild(r);
   });
+  renderPodiumActions();
   fireConfetti();
 }
+
+// ---------- ENTRADA DE DADOS ----------
+(function initOnlineInputs(){
+  const hostName = document.getElementById('hostName');
+  const guestName = document.getElementById('guestName');
+  const codeInput = document.getElementById('roomCodeInput');
+  if(hostName) hostName.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); createRoom(); } });
+  if(guestName) guestName.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); joinRoom(); } });
+  if(codeInput){
+    codeInput.addEventListener('input', ()=>{
+      codeInput.value = codeInput.value.toUpperCase().replace(/[^A-Z]/g,'').slice(0,4);
+    });
+    codeInput.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); joinRoom(); } });
+  }
+})();
