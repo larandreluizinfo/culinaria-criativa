@@ -13,23 +13,47 @@ const THEMES = [
   {n:"🎂 Bolo de Aniversário", d:"O mais festivo vence!"},
   {n:"🍲 Sopa Aconchegante", d:"Quentinha para o coração."},
   {n:"🍔 Hambúrguer Gourmet", d:"Alto, suculento e criativo."},
+  {n:"🥘 Feijoada da Vó", d:"Comida brasileira de verdade."},
+  {n:"🍜 Ramen Maluco", d:"Caldo, macarrão e muita invenção."},
+  {n:"🍦 Sorvete Insano", d:"Cores e coberturas sem limite!"},
+  {n:"🥟 Salgado de Feira", d:"Pastel, coxinha e fritura feliz."},
+  {n:"🍿 Cinema em Casa", d:"Petiscos para assistir filme."},
+  {n:"🍛 Curry Indiano", d:"Especiarias e aroma marcante."},
+  {n:"🥧 Torta da Vovó", d:"Aquele cheirinho de afeto."},
+  {n:"🍱 Bento Criativo", d:"Tudo arrumadinho na caixinha."},
+  {n:"🎃 Halloween Assustador", d:"Feio de propósito, gostoso de verdade."},
+  {n:"🎄 Ceia de Natal", d:"Capriche no prato de festa."},
+  {n:"🍹 Drinque Tropical", d:"Sem álcool e cheio de cor!"},
+  {n:"🧀 Tudo com Queijo", d:"Quanto mais derretido, melhor."},
+  {n:"🎨 Prato Arco-Íris", d:"Use o máximo de cores possível."},
+  {n:"🚀 Comida do Futuro", d:"Ingredientes que ainda não existem!"},
+  {n:"🏝️ Comida de Praia", d:"Leve, fresca e com gostinho de férias."},
+  {n:"🍄 Festa da Floresta", d:"Cogumelos, frutas e folhas."},
 ];
-const TIMES = [30,45,60,90,120];
+// Tempos disponíveis (segundos) — sorteados ou escolhidos na mão
+const TIMES = [20, 30, 45, 60, 90, 120, 150, 180, 240, 300];
 
 // Ingredientes "físicos" espalhados pela cozinha
 const KITCHEN_SOURCES = [
-  {id:'geladeira', label:'Geladeira', icon:'🧊', items:['🍅','🧀','🥛','🥚','🍓','🥬','🥕','🍋']},
-  {id:'armario',   label:'Armário',   icon:'🚪', items:['🍝','🍚','🥔','🍄','🧄','🧅','🫘','🥑']},
-  {id:'temperos',  label:'Temperos',  icon:'🧂', items:['🌶️','🫒','🧂','🍯','🍫']},
-  {id:'cesto',     label:'Cesto',     icon:'🧺', items:['🍖','🍗','🥓','🐟','🍤','🌽','🥦','🍌','🍕']},
+  {id:'geladeira', label:'Geladeira', icon:'🧊', items:['🥛','🧀','🧈','🥚','🍓','🫐','🍇','🍉','🍑','🥝','🍋','🥒','🫑','🥬']},
+  {id:'armario',   label:'Armário',   icon:'🚪', items:['🍝','🍚','🥔','🍄','🧄','🧅','🫘','🥑','🍞','🥖','🥜','🌰','🌾','🍠','🥫','🧇']},
+  {id:'temperos',  label:'Temperos',  icon:'🧂', items:['🌶️','🫒','🧂','🍯','🍫','🌿','🍃','🥥','☕','🍬','🫙']},
+  {id:'cesto',     label:'Cesto',     icon:'🧺', items:['🍖','🍗','🥓','🐟','🍤','🌽','🍌','🍕','🥩','🦑','🦀','🥭','🍒','🥟']},
+  {id:'horta',     label:'Horta',     icon:'🌿', items:['🥦','🥕','🍅','🍆','🎃','🍈','🍏','🍐','🌱']},
 ];
 const INGREDIENTS = KITCHEN_SOURCES.flatMap(s=>s.items);
 const ING_NAMES = {
-  '🍅':'Tomate','🧀':'Queijo','🍖':'Carne','🍗':'Frango','🥓':'Bacon','🐟':'Peixe','🍤':'Camarão',
-  '🥚':'Ovo','🍚':'Arroz','🍝':'Macarrão','🥔':'Batata','🥕':'Cenoura','🥦':'Brócolis','🌽':'Milho',
-  '🍄':'Cogumelo','🧄':'Alho','🧅':'Cebola','🫘':'Feijão','🥑':'Abacate','🍋':'Limão','🍓':'Morango',
-  '🍌':'Banana','🍫':'Chocolate','🍯':'Mel','🥛':'Leite','🌶️':'Pimenta','🫒':'Azeitona','🧂':'Sal',
-  '🍕':'Pizza','🥬':'Alface'
+  '🥛':'Leite','🧀':'Queijo','🧈':'Manteiga','🥚':'Ovo','🍓':'Morango','🫐':'Mirtilo','🍇':'Uva',
+  '🍉':'Melancia','🍑':'Pêssego','🥝':'Kiwi','🍋':'Limão','🥒':'Pepino','🫑':'Pimentão','🥬':'Alface',
+  '🍝':'Macarrão','🍚':'Arroz','🥔':'Batata','🍄':'Cogumelo','🧄':'Alho','🧅':'Cebola','🫘':'Feijão',
+  '🥑':'Abacate','🍞':'Pão','🥖':'Baguete','🥜':'Amendoim','🌰':'Castanha','🌾':'Farinha',
+  '🍠':'Batata-doce','🥫':'Molho','🧇':'Waffle',
+  '🌶️':'Pimenta','🫒':'Azeitona','🧂':'Sal','🍯':'Mel','🍫':'Chocolate','🌿':'Salsinha',
+  '🍃':'Manjericão','🥥':'Coco','☕':'Café','🍬':'Doce','🫙':'Geleia',
+  '🍖':'Carne','🍗':'Frango','🥓':'Bacon','🐟':'Peixe','🍤':'Camarão','🌽':'Milho','🍌':'Banana',
+  '🍕':'Pizza','🥩':'Bife','🦑':'Lula','🦀':'Caranguejo','🥭':'Manga','🍒':'Cereja','🥟':'Pastel',
+  '🥦':'Brócolis','🥕':'Cenoura','🍅':'Tomate','🍆':'Berinjela','🎃':'Abóbora','🍈':'Melão',
+  '🍏':'Maçã','🍐':'Pera','🌱':'Broto'
 };
 const PREP_LABEL = {
   panela:'🔥 Salteado na panela',
@@ -46,7 +70,47 @@ let _localCookRowHTML = null;
 let kitchenPrep = null, kitchenLocked = false, panPct = -13.5, panDrag = null;
 let _hintTimer = null;
 const PAN_MIN = -54.55; // limite do panorama (cenário com 220% da largura)
-const KITCHEN_HINT = 'Arraste para olhar em volta • clique na geladeira, no armário e nos utensílios';
+const KITCHEN_HINT = 'Arraste para olhar em volta • abra a geladeira e o armário • pegue na horta, no cesto e nos temperos';
+
+// ---- Tempo formatado (ex: 45s, 1:30, 5:00) ----
+function fmtTime(s){
+  s = Math.max(0, Math.round(+s || 0));
+  if(s < 60) return s + 's';
+  const m = Math.floor(s/60), r = s%60;
+  return m + ':' + String(r).padStart(2,'0');
+}
+function renderTimeChips(){
+  document.querySelectorAll('[data-time-chips]').forEach(box=>{
+    const online = box.dataset.timeChips === 'online';
+    box.innerHTML = '';
+    TIMES.forEach(s=>{
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'chip' + (totalTime===s ? ' sel' : '');
+      b.textContent = fmtTime(s);
+      b.title = `${fmtTime(s)} para cada prato`;
+      b.setAttribute('aria-pressed', totalTime===s ? 'true' : 'false');
+      b.onclick = ()=>{
+        if(online){
+          if(typeof hostPickTime==='function') hostPickTime(s);
+        } else {
+          pickLocalTime(s);
+        }
+      };
+      box.appendChild(b);
+    });
+  });
+}
+function pickLocalTime(s){
+  totalTime = s;
+  const slot = document.getElementById('timeSlot');
+  if(slot){ slot.classList.remove('rolling'); slot.textContent = fmtTime(s); }
+  const desc = document.getElementById('timeDesc');
+  if(desc) desc.textContent = `⏱️ ${fmtTime(s)} para cada prato!`;
+  renderTimeChips();
+  updateStartBtn();
+  toast(`⏱️ Tempo escolhido: ${fmtTime(s)}`);
+}
 
 // ---- Utilidades ----
 function showScreen(id){
@@ -68,7 +132,7 @@ function goToSetup(){ showScreen('screen-setup'); renderPlayerForms(); }
 
 // ---- Cozinha em primeira pessoa ----
 function buildKitchenItems(){
-  const map = {geladeira:'fridgeItems', armario:'cabinetItems', temperos:'temperosItems', cesto:'cestoItems'};
+  const map = {geladeira:'fridgeItems', armario:'cabinetItems', temperos:'temperosItems', cesto:'cestoItems', horta:'hortaItems'};
   KITCHEN_SOURCES.forEach(src=>{
     const box = document.getElementById(map[src.id]);
     if(!box) return;
@@ -314,6 +378,7 @@ function confirmPlayers(){
   document.getElementById('timeSlot').textContent='❓';
   document.getElementById('themeDesc').textContent='';
   document.getElementById('timeDesc').textContent='';
+  renderTimeChips();
   showScreen('screen-draw');
 }
 
@@ -335,15 +400,17 @@ function drawTheme(){
 }
 function drawTime(){
   const s = TIMES[Math.floor(Math.random()*TIMES.length)];
-  roll(document.getElementById('timeSlot'), TIMES.map(x=>x+'s'), s+'s', ()=>{
-    totalTime=s; document.getElementById('timeDesc').textContent = s+' segundos para cada prato!';
+  roll(document.getElementById('timeSlot'), TIMES.map(x=>fmtTime(x)), fmtTime(s), ()=>{
+    totalTime=s;
+    document.getElementById('timeDesc').textContent = `⏱️ ${fmtTime(s)} para cada prato!`;
+    renderTimeChips();
     updateStartBtn();
   });
 }
 function drawAll(){ drawTheme(); drawTime(); }
 function updateStartBtn(){
   const b=document.getElementById('btnStartCooking');
-  if(theme&&totalTime){ b.disabled=false; b.textContent=`🍳 Começar a Cozinhar! (${theme.n} • ${totalTime}s)`; }
+  if(theme&&totalTime){ b.disabled=false; b.textContent=`🍳 Começar a Cozinhar! (${theme.n} • ${fmtTime(totalTime)})`; }
   else { b.disabled=true; b.textContent='🔒 Sorteie tema e tempo'; }
 }
 
@@ -516,7 +583,7 @@ function showPodium(){
   showScreen('screen-podium');
   const ranked = dishes.map((d,i)=>({...d,media:avg(votes[i]),total:votes[i].reduce((x,y)=>x+y,0)}))
     .sort((a,b)=>b.media-a.media || b.total-a.total);
-  document.getElementById('podiumTheme').textContent=`Tema: ${theme.n} • ${totalTime}s`;
+  document.getElementById('podiumTheme').textContent=`Tema: ${theme.n} • ${fmtTime(totalTime)} por chef`;
   const medals=['🥇','🥈','🥉'];
   const pod=document.getElementById('podium'); pod.innerHTML="";
   const order=[1,0,2]; // visual 2-1-3
@@ -545,6 +612,7 @@ function rematch(){
   document.getElementById('timeSlot').textContent='❓';
   document.getElementById('themeDesc').textContent='';
   document.getElementById('timeDesc').textContent='';
+  renderTimeChips();
   updateStartBtn();
   showScreen('screen-draw');
 }
@@ -563,7 +631,15 @@ function fireConfetti(){
 }
 
 // ---- Inicialização ----
+function fillStats(){
+  const set = (id, v)=>{ const el = document.getElementById(id); if(el) el.textContent = v; };
+  set('statThemes', THEMES.length);
+  set('statTimes', TIMES.length);
+  set('statIngs', INGREDIENTS.length);
+}
 renderPlayerForms();
 initKitchen();
+renderTimeChips();
+fillStats();
 _localCookRowHTML = document.getElementById('cookActions').innerHTML;
 document.addEventListener('keydown', handleVoteKeys);

@@ -20,10 +20,14 @@ O fluxo é sempre o mesmo: escolher personagens → sortear tema + tempo → mon
 Na hora de cozinhar você fica dentro de uma cozinha: arraste para olhar em volta (ou use as setas ← →) e clique nos móveis.
 
 - 🧊 **Geladeira** e 🚪 **armário** abrem e mostram ingredientes de verdade: ao pegar, eles saem do lugar.
-- 🧂 **Temperos** na prateleira e 🧺 **cesto** na bancada completam os 30 ingredientes.
+- 🧂 **Temperos** na prateleira, 🧺 **cesto** na bancada e 🌿 **horta** na ponta direita completam os 64 ingredientes.
 - 🍳 **Panela**, 🥤 **liquidificador** e 🍽️ **pratos** dão um preparo especial ao prato, que aparece na votação.
 - 🥣 A tigela guarda até 6 ingredientes; clique nela para devolver.
 - 🧾 Quem preferir (ou usar leitor de tela) pode abrir a lista completa de ingredientes.
+
+## 🎲 Temas e tempos
+
+São **28 temas** e **10 tempos** (de 20s a 5:00). O tempo pode ser sorteado no botão ou escolhido na mão pelos chips — no modo online quem escolhe é o anfitrião.
 
 ## 🛠️ Tecnologia
 

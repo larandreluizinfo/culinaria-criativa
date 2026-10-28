@@ -215,10 +215,13 @@ function renderLobby(){
   document.getElementById('btnStartOnline').style.display = isHost?'':'none';
   document.getElementById('lobbyWait').style.display = isHost?'none':'';
   document.getElementById('lobbyDraw').style.display = (theme||totalTime)?'grid':'none';
+  const chips = document.getElementById('timeChipsOnline');
+  if(chips) chips.style.display = isHost ? 'flex' : 'none';
   document.getElementById('themeSlotOnline').textContent = theme ? theme.n : '❓';
   document.getElementById('themeDescOnline').textContent = theme ? theme.d : '';
-  document.getElementById('timeSlotOnline').textContent = totalTime ? totalTime+'s' : '❓';
-  document.getElementById('timeDescOnline').textContent = totalTime ? totalTime+' segundos para cada prato!' : '';
+  document.getElementById('timeSlotOnline').textContent = totalTime ? fmtTime(totalTime) : '❓';
+  document.getElementById('timeDescOnline').textContent = totalTime ? `⏱️ ${fmtTime(totalTime)} para cada prato!` : '';
+  renderTimeChips();
   updateLobbyCount();
 }
 function hostDrawAll(){
@@ -231,7 +234,18 @@ function hostDrawAll(){
   hostBroadcastLobby();
   renderLobby();
   const b=document.getElementById('btnStartOnline');
-  b.disabled=false; b.textContent=`🍳 Começar! (${theme.n} • ${totalTime}s)`;
+  b.disabled=false; b.textContent=`🍳 Começar! (${theme.n} • ${fmtTime(totalTime)})`;
+}
+// Host escolhe o tempo na mão (chips do lobby)
+function hostPickTime(s){
+  if(ROLE!=='host' || gamePhase!=='lobby') return;
+  totalTime = s;
+  hostBroadcast({t:'draw', theme, totalTime});
+  hostBroadcastLobby();
+  renderLobby();
+  const b = document.getElementById('btnStartOnline');
+  if(b && theme){ b.disabled=false; b.textContent=`🍳 Começar! (${theme.n} • ${fmtTime(totalTime)})`; }
+  toast(`⏱️ Tempo definido: ${fmtTime(s)}`);
 }
 function hostStartGame(){
   if(onlinePlayers.length<2){ toast('Chame mais amigos! Mínimo 2 jogadores.'); return; }
@@ -362,10 +376,12 @@ function renderLobbyGuest(){
   document.getElementById('lobbyWait').style.display='';
   const showDraw = !!(theme||totalTime);
   document.getElementById('lobbyDraw').style.display = showDraw ? 'grid' : 'none';
+  const chips = document.getElementById('timeChipsOnline');
+  if(chips) chips.style.display = 'none';
   document.getElementById('themeSlotOnline').textContent = theme ? theme.n : '❓';
   document.getElementById('themeDescOnline').textContent = theme ? theme.d : '';
-  document.getElementById('timeSlotOnline').textContent = totalTime ? totalTime+'s' : '❓';
-  document.getElementById('timeDescOnline').textContent = totalTime ? totalTime+' segundos para cada prato!' : '';
+  document.getElementById('timeSlotOnline').textContent = totalTime ? fmtTime(totalTime) : '❓';
+  document.getElementById('timeDescOnline').textContent = totalTime ? `⏱️ ${fmtTime(totalTime)} para cada prato!` : '';
   updateLobbyCount();
 }
 

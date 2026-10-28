@@ -4,13 +4,21 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="description" content="Culinária Criativa: jogo de cozinha para até 10 jogadores, no mesmo aparelho ou online. Sorteie tema e tempo, monte seu prato e dispute o pódio!">
-<meta name="theme-color" content="#7c2d12">
+<meta name="theme-color" content="#7c3aed">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍳</text></svg>">
 <title>Culinária Criativa — Jogo para até 10 Jogadores</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<div class="bg-emoji" aria-hidden="true">🍕 🍰 🍔 🍣 🍩 🥑 🍝 🧁 🍓 🌮</div>
+<div class="bg-emoji" aria-hidden="true">
+  <span>🍕</span><span>🍰</span><span>🍔</span><span>🍣</span><span>🍩</span><span>🥑</span>
+  <span>🍝</span><span>🧁</span><span>🍓</span><span>🌮</span><span>🍜</span><span>🥟</span>
+  <span>🍦</span><span>🫐</span><span>🍿</span><span>🍇</span><span>🥘</span><span>🍪</span>
+  <span>🌶️</span><span>🍋</span><span>🥧</span><span>🍫</span><span>🍱</span><span>🎃</span>
+</div>
 
 <header class="topbar">
   <div class="logo">👩‍🍳 Culinária Criativa</div>
@@ -22,8 +30,15 @@
   <!-- TELA 1: INÍCIO -->
   <section id="screen-home" class="screen active">
     <div class="card hero">
+      <p class="hero-kicker">🎉 festa, criatividade e muita comida</p>
       <h1>🍳 Culinária Criativa</h1>
       <p class="subtitle">Cozinhem com o <b>tema sorteado</b>, corram contra o <b>tempo sorteado</b>, avaliem com <b>até 5 estrelas</b> e descubram o pódio!</p>
+      <div class="stat-row">
+        <div class="stat"><b id="statThemes">0</b><span>temas</span></div>
+        <div class="stat"><b id="statTimes">0</b><span>tempos</span></div>
+        <div class="stat"><b id="statIngs">0</b><span>ingredientes</span></div>
+        <div class="stat"><b>10</b><span>chefs</span></div>
+      </div>
       <div class="how">
         <div><span>1️⃣</span> Escolha seu personagem</div>
         <div><span>2️⃣</span> Sorteie tema + tempo</div>
@@ -71,7 +86,9 @@
       <div id="lobbyPlayers" class="lobby-list"></div>
       <div id="lobbyDraw" class="draw-grid" style="display:none">
         <div class="draw-box"><h3>📋 Tema</h3><div id="themeSlotOnline" class="slot">❓</div><div id="themeDescOnline" class="desc"></div></div>
-        <div class="draw-box"><h3>⏱️ Tempo</h3><div id="timeSlotOnline" class="slot">❓</div><div id="timeDescOnline" class="desc"></div></div>
+        <div class="draw-box"><h3>⏱️ Tempo</h3><div id="timeSlotOnline" class="slot">❓</div><div id="timeDescOnline" class="desc"></div>
+          <div id="timeChipsOnline" class="chip-row" data-time-chips="online" aria-label="Escolher o tempo da rodada"></div>
+        </div>
       </div>
       <div class="row center-row">
         <button id="btnDrawOnline" class="btn secondary" onclick="hostDrawAll()" style="display:none">🎲 Sortear Tema + Tempo</button>
@@ -121,6 +138,8 @@
           <div id="timeSlot" class="slot">❓</div>
           <div id="timeDesc" class="desc"></div>
           <button class="btn secondary" onclick="drawTime()">Sortear Tempo</button>
+          <p class="chip-label">ou escolha na mão:</p>
+          <div id="timeChips" class="chip-row" data-time-chips="local" aria-label="Escolher o tempo da rodada"></div>
         </div>
       </div>
       <div class="row center-row">
@@ -187,6 +206,11 @@
             <div class="k-basket-items" id="cestoItems"></div>
           </div>
 
+          <div class="k-herb k-furniture">
+            <span class="k-herb-label">🌿 Horta</span>
+            <div class="k-herb-items" id="hortaItems"></div>
+          </div>
+
           <button class="k-station k-pan" id="pan" type="button" onclick="setPrep('panela')" aria-pressed="false" aria-label="Cozinhar na panela">
             <span class="k-pan-body">🍳</span>
             <span class="k-pan-items" id="panItems"></span>
@@ -207,10 +231,13 @@
 
           <div class="k-sink" aria-hidden="true">🚰</div>
           <div class="k-plant" aria-hidden="true">🪴</div>
+          <div class="k-cake" aria-hidden="true">🎂</div>
+          <div class="k-frame" aria-hidden="true"><span>🍕</span></div>
+          <div class="k-cat" aria-hidden="true">🐈</div>
         </div>
 
         <div class="k-crosshair" aria-hidden="true"></div>
-        <p class="k-hint" id="kitchenHint">Arraste para olhar em volta • clique na geladeira, no armário e nos utensílios</p>
+        <p class="k-hint" id="kitchenHint">Arraste para olhar em volta • abra a geladeira e o armário • pegue na horta, no cesto e nos temperos</p>
 
         <div class="k-traybar">
           <div class="k-tray-head"><span>🥣 Sua tigela</span><span id="trayCount">0/6</span></div>
